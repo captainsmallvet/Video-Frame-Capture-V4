@@ -151,11 +151,13 @@ const ImageFrame: React.FC<{
     onUpdatePrompt: (frameId: string, newPrompt: string) => void;
     onDelete: (frameId: string) => void;
     onSave: (frameId: string) => void;
-    onProcess: (sourceFrameId: string, prompt: string, resultTitle: string) => void;
+    onProcess: (sourceFrameId: string, prompt: string, resultTitle: string, model: string) => void;
     onOpenFile: (frameId: string, file: File) => void;
     isProcessing: boolean;
 }> = ({ frame, onUpdatePrompt, onDelete, onSave, onProcess, onOpenFile, isProcessing }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-image');
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             onOpenFile(frame.id, e.target.files[0]);
@@ -165,12 +167,12 @@ const ImageFrame: React.FC<{
         switch (action) {
             case 'open': fileInputRef.current?.click(); break;
             case 'save': onSave(frame.id); break;
-            case 'remove_logo': onProcess(frame.id, 'Please edit this image to remove any visible logos.', 'Logo Removed'); break;
-            case 'remove_text': onProcess(frame.id, 'remove all logos and text from this image', 'Text Removed'); break;
+            case 'remove_logo': onProcess(frame.id, 'Please edit this image to remove any visible logos.', 'Logo Removed', selectedModel); break;
+            case 'remove_text': onProcess(frame.id, 'remove all logos and text from this image', 'Text Removed', selectedModel); break;
             case 'clear': onDelete(frame.id); break;
             case 'process_prompt':
                 if (frame.prompt.trim()) {
-                    onProcess(frame.id, frame.prompt, 'Edited Frame');
+                    onProcess(frame.id, frame.prompt, 'Edited Frame', selectedModel);
                 }
                 break;
         }
@@ -181,20 +183,34 @@ const ImageFrame: React.FC<{
             <div className="bg-gray-800 rounded-xl shadow-2xl p-2 flex flex-col gap-4">
                 <img src={frame.src} alt={frame.title} className="w-full h-auto rounded-md"/>
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-sm">
-                    <button onClick={() => handleButtonClick('open')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors">Open</button>
-                    <button onClick={() => handleButtonClick('save')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors">Save</button>
-                    <button onClick={() => handleButtonClick('remove_logo')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors">Remove Logo</button>
-                    <button onClick={() => handleButtonClick('remove_text')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors">Remove Text</button>
-                    <button onClick={() => handleButtonClick('clear')} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors">Clear</button>
+                    <button onClick={() => handleButtonClick('open')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Open</button>
+                    <button onClick={() => handleButtonClick('save')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Save</button>
+                    <button onClick={() => handleButtonClick('remove_logo')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Logo</button>
+                    <button onClick={() => handleButtonClick('remove_text')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Text</button>
+                    <button onClick={() => handleButtonClick('clear')} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Clear</button>
                 </div>
                 <textarea
                     value={frame.prompt}
                     onChange={(e) => onUpdatePrompt(frame.id, e.target.value)}
                     rows={3}
                     className="bg-gray-900 text-gray-200 rounded-lg p-3 w-full focus:ring-2 focus:ring-cyan-400 focus:outline-none transition"
-                    placeholder="Enter a prompt to edit the image... e.g., 'make it look like a watercolor painting'"
+                    placeholder="Enter a prompt to edit the image..."
                 />
-                 <button
+                
+                {/* Model Selector Dropdown */}
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold ml-1">Select AI Model</label>
+                    <select 
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                    >
+                        <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Fast)</option>
+                        <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (High Quality)</option>
+                    </select>
+                </div>
+
+                <button
                     onClick={() => handleButtonClick('process_prompt')}
                     disabled={isProcessing || !frame.prompt.trim()}
                     className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-900/80 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-purple-500 flex items-center justify-center"
@@ -253,7 +269,7 @@ const App: React.FC = () => {
 
     const handleCopyKey = () => {
         navigator.clipboard.writeText(notepadKey).then(() => {
-            // Optional: feedback
+            // Success
         });
     };
 
@@ -362,7 +378,7 @@ const App: React.FC = () => {
         setFrames(prev => [...prev, newFrame]);
     };
 
-    const handleImageProcessing = async (sourceFrameId: string, prompt: string, resultTitle: string) => {
+    const handleImageProcessing = async (sourceFrameId: string, prompt: string, resultTitle: string, model: string) => {
         const sourceFrame = frames.find(f => f.id === sourceFrameId);
         if (!sourceFrame || isProcessing) return;
         if (!activeApiKey) {
@@ -376,8 +392,9 @@ const App: React.FC = () => {
             const base64Data = sourceFrame.src.split(',')[1];
             const mimeType = sourceFrame.src.match(/data:(.*);/)?.[1] || 'image/png';
             const ai = new GoogleGenAI({ apiKey: activeApiKey });
+            
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: model, // Dynamically selected model
                 contents: {
                     parts: [
                         { inlineData: { data: base64Data, mimeType } },
@@ -390,9 +407,11 @@ const App: React.FC = () => {
             if (response.promptFeedback?.blockReason) {
                 throw new Error(`Request was blocked. Reason: ${response.promptFeedback.blockReason}`);
             }
+            
             const candidate = response.candidates?.[0];
             const imagePart = candidate?.content?.parts?.find(p => p.inlineData);
             const processedBase64 = imagePart?.inlineData?.data;
+            
             if (processedBase64) {
                 const newFrame: Frame = {
                     id: crypto.randomUUID(),
@@ -407,10 +426,7 @@ const App: React.FC = () => {
                 if (!reason && candidate?.finishReason && candidate.finishReason !== 'STOP') {
                      reason = `Generation stopped due to: ${candidate.finishReason}`;
                 }
-                const errorMessage = reason 
-                    ? `Failed to process image. Reason: ${reason}`
-                    : "Could not process image. The API returned no image data.";
-                throw new Error(errorMessage);
+                throw new Error(reason || "Could not process image. The API returned no image data.");
             }
         } catch (err: any) {
             console.error("Error processing image:", err);
@@ -457,11 +473,11 @@ const App: React.FC = () => {
         <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-start font-sans text-white">
             
             {/* API KEY NOTEPAD BAR */}
-            <div className="w-full bg-zinc-950 border-b border-zinc-800 p-3 shadow-lg">
+            <div className="w-full bg-zinc-950 border-b border-zinc-800 p-3 shadow-lg sticky top-0 z-50">
                 <div className="max-w-6xl mx-auto flex flex-col gap-2">
                     <div className="flex items-center justify-between px-1">
                         <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className={`w-2 h-2 rounded-full ${activeApiKey ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></span>
                             API key :
                         </label>
                         <div className="flex items-center gap-2">
