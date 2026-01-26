@@ -1,0 +1,5 @@
+{
+  "name": "Video Frame Capture V.4",
+  "description": "An application that allows users to select and play a local .mp4 video file in a sleek, modern video player with a fixed width of 500px.",
+  "requestFramePermissions": []
+}
