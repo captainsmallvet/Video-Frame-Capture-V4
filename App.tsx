@@ -9,6 +9,7 @@ interface Frame {
     title: string;
     prompt: string;
     originalFileName: string;
+    textOutput?: string;
 }
 
 // --- ICONS ---
@@ -152,9 +153,10 @@ const ImageFrame: React.FC<{
     onDelete: (frameId: string) => void;
     onSave: (frameId: string) => void;
     onProcess: (sourceFrameId: string, prompt: string, resultTitle: string, model: string) => void;
+    onTextAction: (frameId: string, action: 'idea' | 'polish' | 'translate' | 'caption') => void;
     onOpenFile: (frameId: string, file: File) => void;
     isProcessing: boolean;
-}> = ({ frame, onUpdatePrompt, onDelete, onSave, onProcess, onOpenFile, isProcessing }) => {
+}> = ({ frame, onUpdatePrompt, onDelete, onSave, onProcess, onTextAction, onOpenFile, isProcessing }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-image');
 
@@ -182,6 +184,45 @@ const ImageFrame: React.FC<{
             <h2 id={`frame-heading-${frame.id}`} className="text-2xl font-bold mb-4 text-center text-gray-300">{frame.title}</h2>
             <div className="bg-gray-800 rounded-xl shadow-2xl p-2 flex flex-col gap-4">
                 <img src={frame.src} alt={frame.title} className="w-full h-auto rounded-md"/>
+                
+                {/* Text Actions */}
+                <div className="grid grid-cols-4 gap-2 px-1">
+                    <button 
+                        onClick={() => onTextAction(frame.id, 'idea')}
+                        disabled={isProcessing}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] py-1 rounded-md transition-colors uppercase font-bold"
+                    >
+                        Idea
+                    </button>
+                    <button 
+                        onClick={() => onTextAction(frame.id, 'polish')}
+                        disabled={isProcessing}
+                        className="bg-teal-600 hover:bg-teal-700 text-white text-[10px] py-1 rounded-md transition-colors uppercase font-bold"
+                    >
+                        Polish
+                    </button>
+                    <button 
+                        onClick={() => onTextAction(frame.id, 'translate')}
+                        disabled={isProcessing}
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] py-1 rounded-md transition-colors uppercase font-bold"
+                    >
+                        Translate
+                    </button>
+                    <button 
+                        onClick={() => onTextAction(frame.id, 'caption')}
+                        disabled={isProcessing}
+                        className="bg-orange-600 hover:bg-orange-700 text-white text-[10px] py-1 rounded-md transition-colors uppercase font-bold"
+                    >
+                        Caption
+                    </button>
+                </div>
+
+                {frame.textOutput && (
+                    <div className="bg-zinc-950/50 border border-zinc-700 rounded-md p-3 text-xs text-zinc-300 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                        {frame.textOutput}
+                    </div>
+                )}
+
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-sm">
                     <button onClick={() => handleButtonClick('open')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Open</button>
                     <button onClick={() => handleButtonClick('save')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Save</button>
@@ -199,14 +240,20 @@ const ImageFrame: React.FC<{
                 
                 {/* Model Selector Dropdown */}
                 <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold ml-1">Select AI Model</label>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold ml-1">AI Image Model</label>
                     <select 
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}
                         className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     >
-                        <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Fast)</option>
-                        <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (High Quality)</option>
+                        <optgroup label="Standard Models">
+                            <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Fast)</option>
+                            <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (High Quality)</option>
+                        </optgroup>
+                        <optgroup label="Long-term Aliases">
+                            <option value="gemini-flash-latest">Gemini Flash Latest</option>
+                            <option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
+                        </optgroup>
                     </select>
                 </div>
 
@@ -228,6 +275,7 @@ const App: React.FC = () => {
     // --- API KEY NOTEPAD STATES ---
     const [notepadKey, setNotepadKey] = useState<string>('');
     const [activeApiKey, setActiveApiKey] = useState<string>('');
+    const [selectedTextModel, setSelectedTextModel] = useState<string>('gemini-3-flash-preview');
     
     // --- APP STATES ---
     const [videoSrc, setVideoSrc] = useState<string | null>(null);
@@ -375,7 +423,7 @@ const App: React.FC = () => {
             prompt: '',
             originalFileName: `${formatTimeForFilename(currentTime)} of ${formatTimeForFilename(duration)} - ${originalNameWithoutExt}.png`
         };
-        setFrames(prev => [...prev, newFrame]);
+        setFrames(prev => [newFrame, ...prev]);
     };
 
     const handleImageProcessing = async (sourceFrameId: string, prompt: string, resultTitle: string, model: string) => {
@@ -394,7 +442,7 @@ const App: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey: activeApiKey });
             
             const response = await ai.models.generateContent({
-                model: model, // Dynamically selected model
+                model: model, 
                 contents: {
                     parts: [
                         { inlineData: { data: base64Data, mimeType } },
@@ -436,6 +484,63 @@ const App: React.FC = () => {
         }
     };
 
+    const handleTextProcessing = async (frameId: string, action: 'idea' | 'polish' | 'translate' | 'caption') => {
+        const sourceFrame = frames.find(f => f.id === frameId);
+        if (!sourceFrame || isProcessing) return;
+        if (!activeApiKey) {
+            setError('No API Key detected.');
+            return;
+        }
+
+        setIsProcessing(true);
+        setError('');
+        try {
+            const ai = new GoogleGenAI({ apiKey: activeApiKey });
+            const base64Data = sourceFrame.src.split(',')[1];
+            const mimeType = sourceFrame.src.match(/data:(.*);/)?.[1] || 'image/png';
+
+            let prompt = "";
+            switch (action) {
+                case 'idea':
+                    prompt = "Describe this image and suggest 3 creative AI image editing ideas to transform it.";
+                    break;
+                case 'polish':
+                    prompt = `Improve and expand this image editing prompt for better results: "${sourceFrame.prompt || 'make it look cinematic'}". Return only the improved prompt text.`;
+                    break;
+                case 'translate':
+                    prompt = "Translate any text visible in the image or provide a translation of what is happening in the scene from English to Thai and vice versa.";
+                    break;
+                case 'caption':
+                    prompt = "Create 3 catchy social media captions for this specific image scene.";
+                    break;
+            }
+
+            const response = await ai.models.generateContent({
+                model: selectedTextModel,
+                contents: {
+                    parts: [
+                        { inlineData: { data: base64Data, mimeType } },
+                        { text: prompt },
+                    ],
+                },
+            });
+
+            const textResult = response.text;
+            if (textResult) {
+                setFrames(prev => prev.map(f => f.id === frameId ? { ...f, textOutput: textResult } : f));
+                // If polishing, also update the prompt textarea
+                if (action === 'polish') {
+                    setFrames(prev => prev.map(f => f.id === frameId ? { ...f, prompt: textResult.trim() } : f));
+                }
+            }
+        } catch (err: any) {
+            console.error("Error processing text reasoning:", err);
+            setError(`Text processing failed: ${err.message || 'Please try again.'}`);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const handleUpdateFramePrompt = (frameId: string, newPrompt: string) => {
         setFrames(frames.map(f => f.id === frameId ? { ...f, prompt: newPrompt } : f));
     };
@@ -472,14 +577,35 @@ const App: React.FC = () => {
     return (
         <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-start font-sans text-white">
             
-            {/* API KEY NOTEPAD BAR */}
+            {/* API KEY & GLOBAL SETTINGS BAR */}
             <div className="w-full bg-zinc-950 border-b border-zinc-800 p-3 shadow-lg sticky top-0 z-50">
-                <div className="max-w-6xl mx-auto flex flex-col gap-2">
-                    <div className="flex items-center justify-between px-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full ${activeApiKey ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></span>
-                            API key :
-                        </label>
+                <div className="max-w-6xl mx-auto flex flex-col gap-3">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-1">
+                        <div className="flex items-center gap-3">
+                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${activeApiKey ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></span>
+                                API Key:
+                            </label>
+                            
+                            <div className="flex items-center gap-2 border-l border-zinc-700 pl-3 ml-1">
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Text Reasoning Model:</label>
+                                <select 
+                                    value={selectedTextModel}
+                                    onChange={(e) => setSelectedTextModel(e.target.value)}
+                                    className="bg-black border border-zinc-700 rounded-md px-2 py-1 text-[10px] text-zinc-300 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-bold uppercase"
+                                >
+                                    <optgroup label="Latest Models">
+                                        <option value="gemini-flash-latest">Gemini Flash Latest</option>
+                                        <option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
+                                    </optgroup>
+                                    <optgroup label="Preview Models">
+                                        <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+                                        <option value="gemini-3-pro-preview">Gemini 3 Pro Preview</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                        </div>
+
                         <div className="flex items-center gap-2">
                             <button 
                                 onClick={handleSendKey}
@@ -510,12 +636,12 @@ const App: React.FC = () => {
                 </div>
             </div>
 
-            <header className="w-full max-w-[500px] text-center my-8">
+            <header className="w-full max-w-[500px] text-center my-8 px-4">
                 <h1 className="text-4xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
                     Video Frame Capture
                 </h1>
                 <p className="text-lg text-gray-400 mt-2">
-                    Open, play, and capture frames from any .mp4 file.
+                    Capture, analyze, and edit video frames with AI.
                 </p>
             </header>
 
@@ -550,7 +676,7 @@ const App: React.FC = () => {
                         onClick={handleUploadAreaClick}
                         className="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500"
                     >
-                        Choose Another Video
+                        Change Video
                     </button>
                     <button
                         onClick={handleCaptureFrame}
@@ -570,6 +696,7 @@ const App: React.FC = () => {
                         onDelete={handleDeleteFrame}
                         onSave={handleSaveFrame}
                         onProcess={handleImageProcessing}
+                        onTextAction={handleTextProcessing}
                         onOpenFile={handleOpenFileForFrame}
                         isProcessing={isProcessing}
                     />
