@@ -246,14 +246,12 @@ const ImageFrame: React.FC<{
                         onChange={(e) => setSelectedModel(e.target.value)}
                         className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     >
-                        <optgroup label="Standard Models">
-                            <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Fast)</option>
-                            <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (High Quality)</option>
-                        </optgroup>
-                        <optgroup label="Long-term Aliases">
-                            <option value="gemini-flash-latest">Gemini Flash Latest</option>
-                            <option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
-                        </optgroup>
+<option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (High Quality)</option>
+<option value="gemini-3-pro-image-preview">Gemini 3.0 Pro Image (Premium)</option>
+<option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Standard)</option>
+<option value="imagen-4.0-generate-001">Imagen 4.0</option>
+<option value="gemini-flash-image-latest">Gemini Flash Image Latest</option>
+<option value="gemini-pro-image-latest">Gemini Pro Image Latest</option>
                     </select>
                 </div>
 
@@ -594,14 +592,14 @@ const App: React.FC = () => {
                                     onChange={(e) => setSelectedTextModel(e.target.value)}
                                     className="bg-black border border-zinc-700 rounded-md px-2 py-1 text-[10px] text-zinc-300 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-bold uppercase"
                                 >
-                                    <optgroup label="Latest Models">
-                                        <option value="gemini-flash-latest">Gemini Flash Latest</option>
-                                        <option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
-                                    </optgroup>
-                                    <optgroup label="Preview Models">
-                                        <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
-                                        <option value="gemini-3-pro-preview">Gemini 3 Pro Preview</option>
-                                    </optgroup>
+<option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+<option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+<option value="gemini-3-pro-preview">Gemini 3.0 Pro Preview</option>
+<option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite Preview</option>
+<option value="gemini-flash-latest">Gemini Flash Latest</option>
+<option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
+<option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+<option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                                 </select>
                             </div>
                         </div>
