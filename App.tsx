@@ -246,12 +246,16 @@ const ImageFrame: React.FC<{
                         onChange={(e) => setSelectedModel(e.target.value)}
                         className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     >
-<option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (High Quality)</option>
-<option value="gemini-3-pro-image-preview">Gemini 3.0 Pro Image (Premium)</option>
-<option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Standard)</option>
-<option value="imagen-4.0-generate-001">Imagen 4.0</option>
+<option value="gemini-2.5-flash-image">gemini-2.5-flash-image (Default)</option>
+<option value="gemini-3-pro-image-preview">gemini-3-pro-image-preview</option>
+<option value="imagen-4.0-generate-001">imagen-4.0-generate-001</option>
 <option value="gemini-flash-image-latest">Gemini Flash Image Latest</option>
 <option value="gemini-pro-image-latest">Gemini Pro Image Latest</option>
+<option value="gemini-flash-latest">gemini-flash-latest</option>
+<option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>
+<option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+<option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
+<option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (High Quality)</option>
                     </select>
                 </div>
 
@@ -600,6 +604,7 @@ const App: React.FC = () => {
 <option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
 <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
 <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+<option value="gemini-pro-latest">Gemini Pro (Latest Stable)</option>
                                 </select>
                             </div>
                         </div>
