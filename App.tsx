@@ -246,16 +246,16 @@ const ImageFrame: React.FC<{
                         onChange={(e) => setSelectedModel(e.target.value)}
                         className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     >
-<option value="gemini-2.5-flash-image">gemini-2.5-flash-image (Default)</option>
-<option value="gemini-3-pro-image-preview">gemini-3-pro-image-preview</option>
-<option value="imagen-4.0-generate-001">imagen-4.0-generate-001</option>
-<option value="gemini-flash-image-latest">Gemini Flash Image Latest</option>
-<option value="gemini-pro-image-latest">Gemini Pro Image Latest</option>
-<option value="gemini-flash-latest">gemini-flash-latest</option>
-<option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>
-<option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
-<option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
-<option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (High Quality)</option>
+<option value="gemini-3.5-flash">(20)Gemini 3.5 Flash</option>
+<option value="gemini-3-flash-preview">(20)Gemini 3 Flash Preview</option>
+<option value="gemini-3.1-pro-preview">(0)Gemini 3.1 Pro Preview</option>
+<option value="gemini-3.1-flash-lite">(500)Gemini 3.1 Flash Lite</option>
+<option value="gemini-flash-latest">Gemini Flash Latest</option>
+<option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
+<option value="gemini-2.5-flash">(20)Gemini 2.5 Flash</option>
+<option value="gemini-2.5-flash-lite">(20)Gemini 2.5 Flash Lite</option>
+<option value="gemini-2.5-pro">(0)Gemini 2.5 Pro</option>
+<option value="gemini-pro-latest">Gemini Pro (Latest Stable)</option>
                     </select>
                 </div>
 
@@ -596,14 +596,15 @@ const App: React.FC = () => {
                                     onChange={(e) => setSelectedTextModel(e.target.value)}
                                     className="bg-black border border-zinc-700 rounded-md px-2 py-1 text-[10px] text-zinc-300 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-bold uppercase"
                                 >
-<option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
-<option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
-<option value="gemini-3-pro-preview">Gemini 3.0 Pro Preview</option>
-<option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+<option value="gemini-3.5-flash">(20)Gemini 3.5 Flash</option>
+<option value="gemini-3-flash-preview">(20)Gemini 3 Flash Preview</option>
+<option value="gemini-3.1-pro-preview">(0)Gemini 3.1 Pro Preview</option>
+<option value="gemini-3.1-flash-lite">(500)Gemini 3.1 Flash Lite</option>
 <option value="gemini-flash-latest">Gemini Flash Latest</option>
 <option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
-<option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-<option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+<option value="gemini-2.5-flash">(20)Gemini 2.5 Flash</option>
+<option value="gemini-2.5-flash-lite">(20)Gemini 2.5 Flash Lite</option>
+<option value="gemini-2.5-pro">(0)Gemini 2.5 Pro</option>
 <option value="gemini-pro-latest">Gemini Pro (Latest Stable)</option>
                                 </select>
                             </div>
