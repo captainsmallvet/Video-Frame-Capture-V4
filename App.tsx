@@ -1,6 +1,15 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, Modality } from '@google/genai';
+import { 
+  fetchCentralModels, 
+  filterModelsByCategory, 
+  getDefaultModelId, 
+  FALLBACK_TEXT_REASONING_MODELS, 
+  FALLBACK_IMAGE_MODELS, 
+  AIModelOption, 
+  APP_IMPORTANCE_LEVEL 
+} from './services/modelService';
 
 // --- FRAME INTERFACE ---
 interface Frame {
@@ -156,9 +165,17 @@ const ImageFrame: React.FC<{
     onTextAction: (frameId: string, action: 'idea' | 'polish' | 'translate' | 'caption') => void;
     onOpenFile: (frameId: string, file: File) => void;
     isProcessing: boolean;
-}> = ({ frame, onUpdatePrompt, onDelete, onSave, onProcess, onTextAction, onOpenFile, isProcessing }) => {
+    imageModelOptions: AIModelOption[];
+    defaultImageModel: string;
+}> = ({ frame, onUpdatePrompt, onDelete, onSave, onProcess, onTextAction, onOpenFile, isProcessing, imageModelOptions, defaultImageModel }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-image');
+    const [selectedModel, setSelectedModel] = useState(defaultImageModel || 'gemini-3-pro-image');
+
+    useEffect(() => {
+        if (defaultImageModel) {
+            setSelectedModel(defaultImageModel);
+        }
+    }, [defaultImageModel]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
@@ -246,16 +263,11 @@ const ImageFrame: React.FC<{
                         onChange={(e) => setSelectedModel(e.target.value)}
                         className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     >
-<option value="gemini-3.5-flash">(20)Gemini 3.5 Flash</option>
-<option value="gemini-3-flash-preview">(20)Gemini 3 Flash Preview</option>
-<option value="gemini-3.1-pro-preview">(0)Gemini 3.1 Pro Preview</option>
-<option value="gemini-3.1-flash-lite">(500)Gemini 3.1 Flash Lite</option>
-<option value="gemini-flash-latest">Gemini Flash Latest</option>
-<option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
-<option value="gemini-2.5-flash">(20)Gemini 2.5 Flash</option>
-<option value="gemini-2.5-flash-lite">(20)Gemini 2.5 Flash Lite</option>
-<option value="gemini-2.5-pro">(0)Gemini 2.5 Pro</option>
-<option value="gemini-pro-latest">Gemini Pro (Latest Stable)</option>
+                        {imageModelOptions.map((m) => (
+                            <option key={m.id || m.modelId} value={m.modelId}>
+                                {m.name}
+                            </option>
+                        ))}
                     </select>
                 </div>
 
@@ -274,10 +286,19 @@ const ImageFrame: React.FC<{
 
 // --- MAIN APP COMPONENT ---
 const App: React.FC = () => {
+    // --- CENTRAL AI MODELS STATES ---
+    const [textModelOptions, setTextModelOptions] = useState<AIModelOption[]>(FALLBACK_TEXT_REASONING_MODELS);
+    const [imageModelOptions, setImageModelOptions] = useState<AIModelOption[]>(FALLBACK_IMAGE_MODELS);
+
+    const initialTextModel = getDefaultModelId(FALLBACK_TEXT_REASONING_MODELS, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.6-flash');
+    const initialImageModel = getDefaultModelId(FALLBACK_IMAGE_MODELS, APP_IMPORTANCE_LEVEL as 1, 'gemini-3-pro-image');
+
+    const [selectedTextModel, setSelectedTextModel] = useState<string>(initialTextModel);
+    const [defaultImageModel, setDefaultImageModel] = useState<string>(initialImageModel);
+
     // --- API KEY NOTEPAD STATES ---
     const [notepadKey, setNotepadKey] = useState<string>('');
     const [activeApiKey, setActiveApiKey] = useState<string>('');
-    const [selectedTextModel, setSelectedTextModel] = useState<string>('gemini-3-flash-preview');
     
     // --- APP STATES ---
     const [videoSrc, setVideoSrc] = useState<string | null>(null);
@@ -294,6 +315,34 @@ const App: React.FC = () => {
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
+
+    // --- FETCH CENTRAL MODELS FROM FIRESTORE ON PAGE LOAD / REFRESH ---
+    useEffect(() => {
+        let isMounted = true;
+        async function loadCentralModels() {
+            const models = await fetchCentralModels();
+            if (!isMounted) return;
+
+            if (models && models.length > 0) {
+                const textModels = filterModelsByCategory(models, 'text_reasoning');
+                if (textModels.length > 0) {
+                    setTextModelOptions(textModels);
+                    const defText = getDefaultModelId(textModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.6-flash');
+                    setSelectedTextModel(defText);
+                }
+
+                const imgModels = filterModelsByCategory(models, 'image_gen');
+                if (imgModels.length > 0) {
+                    setImageModelOptions(imgModels);
+                    const defImg = getDefaultModelId(imgModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3-pro-image');
+                    setDefaultImageModel(defImg);
+                }
+            }
+        }
+
+        loadCentralModels();
+        return () => { isMounted = false; };
+    }, []);
 
     // --- INITIALIZATION ---
     useEffect(() => {
@@ -596,16 +645,11 @@ const App: React.FC = () => {
                                     onChange={(e) => setSelectedTextModel(e.target.value)}
                                     className="bg-black border border-zinc-700 rounded-md px-2 py-1 text-[10px] text-zinc-300 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-bold uppercase"
                                 >
-<option value="gemini-3.5-flash">(20)Gemini 3.5 Flash</option>
-<option value="gemini-3-flash-preview">(20)Gemini 3 Flash Preview</option>
-<option value="gemini-3.1-pro-preview">(0)Gemini 3.1 Pro Preview</option>
-<option value="gemini-3.1-flash-lite">(500)Gemini 3.1 Flash Lite</option>
-<option value="gemini-flash-latest">Gemini Flash Latest</option>
-<option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
-<option value="gemini-2.5-flash">(20)Gemini 2.5 Flash</option>
-<option value="gemini-2.5-flash-lite">(20)Gemini 2.5 Flash Lite</option>
-<option value="gemini-2.5-pro">(0)Gemini 2.5 Pro</option>
-<option value="gemini-pro-latest">Gemini Pro (Latest Stable)</option>
+                                    {textModelOptions.map((m) => (
+                                        <option key={m.id || m.modelId} value={m.modelId}>
+                                            {m.name}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                         </div>
@@ -703,6 +747,8 @@ const App: React.FC = () => {
                         onTextAction={handleTextProcessing}
                         onOpenFile={handleOpenFileForFrame}
                         isProcessing={isProcessing}
+                        imageModelOptions={imageModelOptions}
+                        defaultImageModel={defaultImageModel}
                     />
                  ))}
             </div>
