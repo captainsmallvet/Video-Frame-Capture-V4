@@ -27,6 +27,7 @@ interface Frame {
     textOutput?: string;
     naturalWidth?: number;
     naturalHeight?: number;
+    frameIndex?: number;
 }
 
 // --- ICONS ---
@@ -37,31 +38,31 @@ const UploadIcon = () => (
 );
 
 const PlayIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
     </svg>
 );
 
 const PauseIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 4h4v16H6zM14 4h4v16h-4z" />
     </svg>
 );
 
 const SkipToEndIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 19V5l11 7-11 7zM19 5v14" />
     </svg>
 );
 
 const VolumeHighIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
     </svg>
 );
 
 const VolumeMuteIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l4-4m0 4l-4-4" />
     </svg>
 );
@@ -73,8 +74,23 @@ const SpinnerIcon = () => (
     </svg>
 );
 
-// --- UTILITY FUNCTIONS ---
-const formatTime = (timeInSeconds: number) => {
+// --- DETAILED TIME & FRAME UTILITIES ---
+const formatTimeDetailed = (timeInSeconds: number) => {
+    const totalSeconds = Math.floor(timeInSeconds);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const milliseconds = Math.floor((timeInSeconds % 1) * 100);
+    
+    const formattedMinutes = String(minutes).padStart(2, '0');
+    const formattedSeconds = String(seconds).padStart(2, '0');
+    const formattedMs = String(milliseconds).padStart(2, '0');
+    
+    if (hours > 0) return `${hours}:${formattedMinutes}:${formattedSeconds}.${formattedMs}`;
+    return `${formattedMinutes}:${formattedSeconds}.${formattedMs}`;
+};
+
+const formatTimeShort = (timeInSeconds: number) => {
     const totalSeconds = Math.floor(timeInSeconds);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -85,11 +101,12 @@ const formatTime = (timeInSeconds: number) => {
     return `${formattedMinutes}:${formattedSeconds}`;
 };
 
-const formatTimeForFilename = (timeInSeconds: number) => {
+const formatTimeForFilename = (timeInSeconds: number, fps: number = 30) => {
     const totalSeconds = Math.floor(timeInSeconds);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    return `${String(minutes).padStart(2, '0')}_${String(seconds).padStart(2, '0')}`;
+    const frameIndex = Math.floor(timeInSeconds * fps);
+    return `${String(minutes).padStart(2, '0')}_${String(seconds).padStart(2, '0')}_f${String(frameIndex).padStart(4, '0')}`;
 };
 
 const dataURLToBlob = async (dataUrl: string): Promise<Blob> => {
@@ -109,7 +126,7 @@ const UploadPlaceholder: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     </div>
 );
 
-// --- RESILIENT VIDEO PLAYER WITH PREVIEW SIZING SYSTEM ---
+// --- HIGH-PRECISION FRAME-BY-FRAME VIDEO PLAYER ---
 const VideoPlayer: React.FC<{
     src: string;
     videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -134,12 +151,21 @@ const VideoPlayer: React.FC<{
     onZoomChange: (zoom: number) => void;
     onResetZoom: () => void;
     videoDimensions: { width: number; height: number } | null;
+    fps: number;
+    onFpsChange: (newFps: number) => void;
+    onStepFrames: (delta: number) => void;
+    onCaptureFrame: () => void;
 }> = ({
     src, videoRef, isPlaying, currentTime, duration, isMuted, volume,
     togglePlayPause, handleSeek, toggleMute, handleVolumeChange,
     onPlay, onPause, onTimeUpdate, onLoadedMetadata, onEnded, onSkipToEnd,
-    fitMode, zoom, onSetFitMode, onZoomChange, onResetZoom, videoDimensions
+    fitMode, zoom, onSetFitMode, onZoomChange, onResetZoom, videoDimensions,
+    fps, onFpsChange, onStepFrames, onCaptureFrame
 }) => {
+    const currentFrame = Math.floor(currentTime * fps);
+    const totalFrames = Math.floor((duration || 0) * fps);
+    const sliderStep = 1 / fps; // Sub-second frame step
+
     return (
         <div className="w-full flex flex-col items-center gap-2">
             
@@ -155,15 +181,43 @@ const VideoPlayer: React.FC<{
                 />
             </div>
 
-            {/* Video Resolution & Preview Mode Info Badge */}
-            <div className="w-full flex items-center justify-between px-2 text-[10px] text-zinc-400 font-mono">
-                <span className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                    {videoDimensions ? `${videoDimensions.width} × ${videoDimensions.height} px (Original Video Data Intact)` : 'Video Loading...'}
-                </span>
-                <span className="text-zinc-500 hidden sm:inline">
-                    * ปรับขนาดเฉพาะหน้าต่าง Preview เท่านั้น ไม่กระทบความละเอียดของข้อมูลจริง
-                </span>
+            {/* Video Metadata & FPS Bar */}
+            <div className="w-full flex flex-wrap items-center justify-between px-2 py-1 text-[11px] text-zinc-400 font-mono bg-zinc-950/60 rounded-lg border border-zinc-800 gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="flex items-center gap-1.5 text-cyan-300 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                        {videoDimensions ? `${videoDimensions.width} × ${videoDimensions.height} px` : 'Video Loading...'}
+                    </span>
+
+                    <span className="text-zinc-600">|</span>
+
+                    {/* Live Frame Counter Badge */}
+                    <span className="px-2 py-0.5 rounded bg-indigo-950/50 text-indigo-300 border border-indigo-800/60 font-bold">
+                        Frame #{currentFrame} / {totalFrames}
+                    </span>
+                </div>
+
+                <div className="flex items-center gap-2 ml-auto">
+                    {/* FPS Selector */}
+                    <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-zinc-500 uppercase font-bold">FPS:</span>
+                        <select
+                            value={fps}
+                            onChange={(e) => onFpsChange(Number(e.target.value))}
+                            className="bg-black border border-zinc-700 rounded px-1.5 py-0.5 text-[11px] text-zinc-200 focus:outline-none focus:ring-1 focus:ring-cyan-400 font-mono"
+                            title="Frame rate for precise frame-by-frame calculations"
+                        >
+                            <option value={24}>24 fps (Cinema)</option>
+                            <option value={25}>25 fps (PAL)</option>
+                            <option value={30}>30 fps (Standard)</option>
+                            <option value={60}>60 fps (High)</option>
+                        </select>
+                    </div>
+
+                    <span className="text-[10px] text-zinc-500 hidden md:inline">
+                        (← / → keys: ±1f, Shift: ±5f)
+                    </span>
+                </div>
             </div>
 
             {/* Main Video Viewport Container */}
@@ -203,25 +257,127 @@ const VideoPlayer: React.FC<{
                 </div>
             </div>
 
-            {/* Video Controls Bar */}
-            <div className="w-full bg-gray-800/90 backdrop-blur-sm p-2.5 rounded-b-xl flex items-center gap-3 text-white border-x border-b border-zinc-700/80">
-                <button onClick={togglePlayPause} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label={isPlaying ? 'Pause' : 'Play'}>
-                    {isPlaying ? <PauseIcon /> : <PlayIcon />}
-                </button>
-                <button onClick={onSkipToEnd} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label="Go to end">
-                    <SkipToEndIcon />
-                </button>
-                <div className="flex items-center gap-2 flex-grow">
-                    <span className="text-xs font-mono w-12 text-center" aria-label="Current time">{formatTime(currentTime)}</span>
-                    <input type="range" min={0} max={duration || 0} value={currentTime} onChange={handleSeek} className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer range-sm accent-cyan-400" aria-label="Seek slider" />
-                    <span className="text-xs font-mono w-12 text-center" aria-label="Total duration">{formatTime(duration || 0)}</span>
-                </div>
-                 <div className="flex items-center gap-2">
-                    <button onClick={toggleMute} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}>
-                        {isMuted || volume === 0 ? <VolumeMuteIcon /> : <VolumeHighIcon />}
+            {/* Video Controls & Frame-by-Frame Fine-Tune Bar */}
+            <div className="w-full bg-gray-800/95 backdrop-blur-sm p-3 rounded-b-xl flex flex-col gap-2.5 text-white border-x border-b border-zinc-700/80 shadow-xl">
+                
+                {/* Row 1: High-Precision Sub-Second Slider */}
+                <div className="flex items-center gap-3">
+                    <button onClick={togglePlayPause} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label={isPlaying ? 'Pause' : 'Play'}>
+                        {isPlaying ? <PauseIcon /> : <PlayIcon />}
                     </button>
-                    <input type="range" min={0} max={1} step={0.1} value={isMuted ? 0 : volume} onChange={handleVolumeChange} className="w-20 sm:w-24 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer range-sm accent-cyan-400" aria-label="Volume slider" />
+                    
+                    <button onClick={onSkipToEnd} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label="Go to end">
+                        <SkipToEndIcon />
+                    </button>
+
+                    <div className="flex items-center gap-2 flex-grow">
+                        {/* Current Time with Milliseconds */}
+                        <span className="text-xs font-mono min-w-[70px] text-center text-cyan-300 font-bold" aria-label="Current time">
+                            {formatTimeDetailed(currentTime)}
+                        </span>
+                        
+                        {/* High-Resolution Slider with sub-second step */}
+                        <input 
+                            type="range" 
+                            min={0} 
+                            max={duration || 0} 
+                            step={sliderStep}
+                            value={currentTime} 
+                            onChange={handleSeek} 
+                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer range-sm accent-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-all" 
+                            aria-label="Frame-by-frame Seek slider" 
+                            title={`Seek video (Step: ${sliderStep.toFixed(4)}s / 1 frame)`}
+                        />
+
+                        {/* Total Duration */}
+                        <span className="text-xs font-mono min-w-[55px] text-center text-zinc-400" aria-label="Total duration">
+                            {formatTimeShort(duration || 0)}
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                        <button onClick={toggleMute} className="p-1.5 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}>
+                            {isMuted || volume === 0 ? <VolumeMuteIcon /> : <VolumeHighIcon />}
+                        </button>
+                        <input type="range" min={0} max={1} step={0.05} value={isMuted ? 0 : volume} onChange={handleVolumeChange} className="w-16 sm:w-20 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer range-sm accent-cyan-400" aria-label="Volume slider" />
+                    </div>
                 </div>
+
+                {/* Row 2: Frame-by-Frame Fine-Tune Buttons (+- 1 frame, +- 5 frames) */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-700/60 text-xs">
+                    
+                    {/* Stepper Buttons Group */}
+                    <div className="flex items-center gap-1.5 bg-zinc-950/80 p-1 rounded-xl border border-zinc-700/80">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-2 hidden sm:inline">
+                            Fine Tune:
+                        </span>
+
+                        {/* -5 Frames */}
+                        <button
+                            type="button"
+                            onClick={() => onStepFrames(-5)}
+                            className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-lg font-mono font-bold text-[11px] border border-zinc-700 transition-all active:scale-95 flex items-center gap-1"
+                            title="Step backward 5 frames (Shift + Left Arrow)"
+                        >
+                            <span>⏪</span>
+                            <span>-5f</span>
+                        </button>
+
+                        {/* -1 Frame */}
+                        <button
+                            type="button"
+                            onClick={() => onStepFrames(-1)}
+                            className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white rounded-lg font-mono font-bold text-[11px] border border-zinc-700 transition-all active:scale-95 flex items-center gap-1"
+                            title="Step backward 1 frame (Left Arrow)"
+                        >
+                            <span>◀</span>
+                            <span>-1f</span>
+                        </button>
+
+                        {/* Frame Counter display */}
+                        <div className="px-3 py-1 bg-black rounded-lg border border-zinc-800 text-cyan-300 font-mono text-[11px] font-bold text-center min-w-[70px]">
+                            f#{currentFrame}
+                        </div>
+
+                        {/* +1 Frame */}
+                        <button
+                            type="button"
+                            onClick={() => onStepFrames(1)}
+                            className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white rounded-lg font-mono font-bold text-[11px] border border-zinc-700 transition-all active:scale-95 flex items-center gap-1"
+                            title="Step forward 1 frame (Right Arrow)"
+                        >
+                            <span>+1f</span>
+                            <span>▶</span>
+                        </button>
+
+                        {/* +5 Frames */}
+                        <button
+                            type="button"
+                            onClick={() => onStepFrames(5)}
+                            className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-lg font-mono font-bold text-[11px] border border-zinc-700 transition-all active:scale-95 flex items-center gap-1"
+                            title="Step forward 5 frames (Shift + Right Arrow)"
+                        >
+                            <span>+5f</span>
+                            <span>⏩</span>
+                        </button>
+                    </div>
+
+                    {/* Quick Frame Capture Trigger */}
+                    <button
+                        type="button"
+                        onClick={onCaptureFrame}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg shadow-cyan-600/20 active:scale-95 transition-all text-xs flex items-center gap-1.5"
+                        title="Capture this exact frame at native video resolution"
+                    >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span>Capture Frame #{currentFrame}</span>
+                    </button>
+
+                </div>
+
             </div>
         </div>
     );
@@ -492,10 +648,11 @@ const App: React.FC = () => {
     const [successNotice, setSuccessNotice] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     
-    // Video Preview Sizing State (Preview only)
+    // Video Preview Sizing & FPS State
     const [videoFitMode, setVideoFitMode] = useState<PreviewFitMode>('standard');
     const [videoZoom, setVideoZoom] = useState<number>(100);
     const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+    const [fps, setFps] = useState<number>(30); // Frame Rate for frame-by-frame seeking
 
     // Modals
     const [isAiLogModalOpen, setIsAiLogModalOpen] = useState<boolean>(false);
@@ -618,15 +775,56 @@ const App: React.FC = () => {
     }, [videoSrc, isMuted, volume]);
     
     // --- VIDEO PLAYER HANDLERS ---
-    const togglePlayPause = () => {
+    const togglePlayPause = useCallback(() => {
         if (!videoRef.current) return;
         videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause();
-    };
+    }, []);
 
+    // High-Precision Seek Handler
     const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (!videoRef.current) return;
-        videoRef.current.currentTime = Number(event.target.value);
+        const targetTime = Number(event.target.value);
+        videoRef.current.currentTime = targetTime;
+        setCurrentTime(targetTime);
     };
+
+    // Frame-by-Frame Fine Tune (+- 1 frame, +- 5 frames)
+    const handleStepFrames = useCallback((frameDelta: number) => {
+        if (!videoRef.current) return;
+        const video = videoRef.current;
+        if (!video.paused) {
+            video.pause();
+            setIsPlaying(false);
+        }
+        const frameDuration = 1 / fps;
+        const nextTime = Math.max(0, Math.min(duration || 0, video.currentTime + (frameDelta * frameDuration)));
+        video.currentTime = nextTime;
+        setCurrentTime(nextTime);
+    }, [fps, duration]);
+
+    // Keyboard Shortcuts for Frame Navigation
+    useEffect(() => {
+        if (!videoSrc) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+                return;
+            }
+
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                handleStepFrames(e.shiftKey ? -5 : -1);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                handleStepFrames(e.shiftKey ? 5 : 1);
+            } else if (e.key === ' ') {
+                e.preventDefault();
+                togglePlayPause();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [videoSrc, handleStepFrames, togglePlayPause]);
 
     const handleVolumeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (!videoRef.current) return;
@@ -690,7 +888,7 @@ const App: React.FC = () => {
         if (!videoRef.current) return;
         const video = videoRef.current;
         
-        // Always captures from native videoWidth and videoHeight - NEVER affected by preview zoom/scale
+        // Always captures from native videoWidth and videoHeight
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth || 1280;
         canvas.height = video.videoHeight || 720;
@@ -700,19 +898,21 @@ const App: React.FC = () => {
         
         const dataUrl = canvas.toDataURL('image/png');
         const originalNameWithoutExt = videoFileName.split('.').slice(0, -1).join('.') || videoFileName || 'video';
+        const currentFrameNum = Math.floor(currentTime * fps);
         
         const newFrame: Frame = {
             id: crypto.randomUUID ? crypto.randomUUID() : `frame-${Date.now()}`,
             src: dataUrl,
-            title: `Captured Frame (${canvas.width}×${canvas.height})`,
+            title: `Captured Frame #${currentFrameNum} (${canvas.width}×${canvas.height})`,
             prompt: '',
-            originalFileName: `${formatTimeForFilename(currentTime)} of ${formatTimeForFilename(duration)} - ${originalNameWithoutExt}.png`,
+            originalFileName: `${formatTimeForFilename(currentTime, fps)} - ${originalNameWithoutExt}.png`,
             naturalWidth: canvas.width,
-            naturalHeight: canvas.height
+            naturalHeight: canvas.height,
+            frameIndex: currentFrameNum
         };
         
         setFrames(prev => [newFrame, ...prev]);
-        setSuccessNotice(`Frame captured in full native ${canvas.width}×${canvas.height} resolution!`);
+        setSuccessNotice(`Frame #${currentFrameNum} captured at ${formatTimeDetailed(currentTime)} (${canvas.width}×${canvas.height})!`);
         setTimeout(() => setSuccessNotice(''), 3000);
     };
 
@@ -725,7 +925,6 @@ const App: React.FC = () => {
         setError('');
 
         try {
-            // Full pristine original base64 is passed - untouched by preview zoom
             const base64Data = sourceFrame.src.split(',')[1] || sourceFrame.src;
             const mimeType = sourceFrame.src.match(/data:(.*);/)?.[1] || 'image/png';
 
@@ -980,6 +1179,10 @@ const App: React.FC = () => {
                             onZoomChange={handleVideoZoomChange}
                             onResetZoom={handleVideoResetZoom}
                             videoDimensions={videoDimensions}
+                            fps={fps}
+                            onFpsChange={setFps}
+                            onStepFrames={handleStepFrames}
+                            onCaptureFrame={handleCaptureFrame}
                         />
                     ) : (
                         <UploadPlaceholder onClick={handleUploadAreaClick} />
@@ -1012,7 +1215,7 @@ const App: React.FC = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        Capture Frame
+                        <span>Capture Current Frame #{Math.floor(currentTime * fps)}</span>
                     </button>
                 </div>
             )}
