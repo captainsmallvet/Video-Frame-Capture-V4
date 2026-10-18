@@ -101,7 +101,7 @@ const formatTimeShort = (timeInSeconds: number) => {
     return `${formattedMinutes}:${formattedSeconds}`;
 };
 
-const formatTimeForFilename = (timeInSeconds: number, fps: number = 30) => {
+const formatTimeForFilename = (timeInSeconds: number, fps: number = 24) => {
     const totalSeconds = Math.floor(timeInSeconds);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
@@ -400,7 +400,7 @@ const ImageFrame: React.FC<{
     const [selectedModel, setSelectedModel] = useState(defaultImageModel || 'gemini-3-pro-image');
     
     // Preview Resize States (Preview Only - Original Data 100% Intact)
-    const [fitMode, setFitMode] = useState<PreviewFitMode>('fit-width');
+    const [fitMode, setFitMode] = useState<PreviewFitMode>('fit-height');
     const [zoom, setZoom] = useState<number>(100);
     const [isLightboxOpen, setIsLightboxOpen] = useState<boolean>(false);
     const [imgDimensions, setImgDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -648,11 +648,11 @@ const App: React.FC = () => {
     const [successNotice, setSuccessNotice] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     
-    // Video Preview Sizing & FPS State
-    const [videoFitMode, setVideoFitMode] = useState<PreviewFitMode>('standard');
+    // Video Preview Sizing & FPS State (Default: Fit Height & 24 FPS)
+    const [videoFitMode, setVideoFitMode] = useState<PreviewFitMode>('fit-height');
     const [videoZoom, setVideoZoom] = useState<number>(100);
     const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
-    const [fps, setFps] = useState<number>(30); // Frame Rate for frame-by-frame seeking
+    const [fps, setFps] = useState<number>(24); // Frame Rate default 24 fps (Cinema standard)
 
     // Modals
     const [isAiLogModalOpen, setIsAiLogModalOpen] = useState<boolean>(false);
