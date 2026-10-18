@@ -13,6 +13,8 @@ import { runWithModelTracking } from './services/geminiClientService';
 import { FloatingMenu } from './components/FloatingMenu';
 import { AiLogModal } from './components/AiLogModal';
 import { ApiKeyModal } from './components/ApiKeyModal';
+import { PreviewControls, PreviewFitMode } from './components/PreviewControls';
+import { ImageLightboxModal } from './components/ImageLightboxModal';
 import { executionTracker } from './services/executionTracker';
 
 // --- FRAME INTERFACE ---
@@ -23,6 +25,8 @@ interface Frame {
     prompt: string;
     originalFileName: string;
     textOutput?: string;
+    naturalWidth?: number;
+    naturalHeight?: number;
 }
 
 // --- ICONS ---
@@ -105,6 +109,7 @@ const UploadPlaceholder: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     </div>
 );
 
+// --- RESILIENT VIDEO PLAYER WITH PREVIEW SIZING SYSTEM ---
 const VideoPlayer: React.FC<{
     src: string;
     videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -123,43 +128,106 @@ const VideoPlayer: React.FC<{
     onLoadedMetadata: () => void;
     onEnded: () => void;
     onSkipToEnd: () => void;
+    fitMode: PreviewFitMode;
+    zoom: number;
+    onSetFitMode: (mode: PreviewFitMode) => void;
+    onZoomChange: (zoom: number) => void;
+    onResetZoom: () => void;
+    videoDimensions: { width: number; height: number } | null;
 }> = ({
     src, videoRef, isPlaying, currentTime, duration, isMuted, volume,
     togglePlayPause, handleSeek, toggleMute, handleVolumeChange,
-    onPlay, onPause, onTimeUpdate, onLoadedMetadata, onEnded, onSkipToEnd
-}) => (
-     <div className="w-full flex flex-col items-center">
-        <video
-            ref={videoRef} key={src} autoPlay
-            className="w-[500px] h-auto rounded-t-md bg-black cursor-pointer"
-            onClick={togglePlayPause} onPlay={onPlay} onPause={onPause} onTimeUpdate={onTimeUpdate}
-            onLoadedMetadata={onLoadedMetadata} onEnded={onEnded}
-        >
-            <source src={src} type="video/mp4" />
-            Your browser does not support the video tag.
-        </video>
-        <div className="w-[500px] bg-gray-800/80 backdrop-blur-sm p-2 rounded-b-md flex items-center gap-3 text-white">
-            <button onClick={togglePlayPause} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label={isPlaying ? 'Pause' : 'Play'}>
-                {isPlaying ? <PauseIcon /> : <PlayIcon />}
-            </button>
-            <button onClick={onSkipToEnd} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label="Go to end">
-                <SkipToEndIcon />
-            </button>
-            <div className="flex items-center gap-2 flex-grow">
-                <span className="text-xs font-mono w-12 text-center" aria-label="Current time">{formatTime(currentTime)}</span>
-                <input type="range" min={0} max={duration || 0} value={currentTime} onChange={handleSeek} className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer range-sm accent-cyan-400" aria-label="Seek slider" />
-                <span className="text-xs font-mono w-12 text-center" aria-label="Total duration">{formatTime(duration || 0)}</span>
+    onPlay, onPause, onTimeUpdate, onLoadedMetadata, onEnded, onSkipToEnd,
+    fitMode, zoom, onSetFitMode, onZoomChange, onResetZoom, videoDimensions
+}) => {
+    return (
+        <div className="w-full flex flex-col items-center gap-2">
+            
+            {/* Quick Preview Sizing Toolbar */}
+            <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+                <PreviewControls
+                    fitMode={fitMode}
+                    zoom={zoom}
+                    onSetFitMode={onSetFitMode}
+                    onZoomChange={onZoomChange}
+                    onResetZoom={onResetZoom}
+                    title="Video Preview"
+                />
             </div>
-             <div className="flex items-center gap-2">
-                <button onClick={toggleMute} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}>
-                    {isMuted || volume === 0 ? <VolumeMuteIcon /> : <VolumeHighIcon />}
+
+            {/* Video Resolution & Preview Mode Info Badge */}
+            <div className="w-full flex items-center justify-between px-2 text-[10px] text-zinc-400 font-mono">
+                <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    {videoDimensions ? `${videoDimensions.width} × ${videoDimensions.height} px (Original Video Data Intact)` : 'Video Loading...'}
+                </span>
+                <span className="text-zinc-500 hidden sm:inline">
+                    * ปรับขนาดเฉพาะหน้าต่าง Preview เท่านั้น ไม่กระทบความละเอียดของข้อมูลจริง
+                </span>
+            </div>
+
+            {/* Main Video Viewport Container */}
+            <div className={`w-full overflow-hidden transition-all duration-300 flex items-center justify-center bg-black/90 rounded-t-xl border border-zinc-700/80 ${
+                fitMode === 'fit-height' ? 'max-h-[55vh]' : ''
+            }`}>
+                <div 
+                    className={`w-full flex items-center justify-center overflow-auto transition-all ${
+                        fitMode === 'custom-zoom' ? 'max-h-[60vh] p-2' : ''
+                    }`}
+                >
+                    <video
+                        ref={videoRef} 
+                        key={src} 
+                        autoPlay
+                        style={{
+                            transform: fitMode === 'custom-zoom' ? `scale(${zoom / 100})` : 'none',
+                            transformOrigin: 'center center',
+                            transition: 'transform 0.15s ease-out'
+                        }}
+                        className={`cursor-pointer transition-all ${
+                            fitMode === 'fit-width' ? 'w-full h-auto object-contain max-h-[75vh]' :
+                            fitMode === 'fit-height' ? 'max-h-[52vh] w-auto object-contain' :
+                            fitMode === 'custom-zoom' ? 'max-w-none max-h-none' :
+                            'w-[500px] h-auto object-contain'
+                        }`}
+                        onClick={togglePlayPause} 
+                        onPlay={onPlay} 
+                        onPause={onPause} 
+                        onTimeUpdate={onTimeUpdate}
+                        onLoadedMetadata={onLoadedMetadata} 
+                        onEnded={onEnded}
+                    >
+                        <source src={src} type="video/mp4" />
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+            </div>
+
+            {/* Video Controls Bar */}
+            <div className="w-full bg-gray-800/90 backdrop-blur-sm p-2.5 rounded-b-xl flex items-center gap-3 text-white border-x border-b border-zinc-700/80">
+                <button onClick={togglePlayPause} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label={isPlaying ? 'Pause' : 'Play'}>
+                    {isPlaying ? <PauseIcon /> : <PlayIcon />}
                 </button>
-                <input type="range" min={0} max={1} step={0.1} value={isMuted ? 0 : volume} onChange={handleVolumeChange} className="w-24 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer range-sm accent-cyan-400" aria-label="Volume slider" />
+                <button onClick={onSkipToEnd} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label="Go to end">
+                    <SkipToEndIcon />
+                </button>
+                <div className="flex items-center gap-2 flex-grow">
+                    <span className="text-xs font-mono w-12 text-center" aria-label="Current time">{formatTime(currentTime)}</span>
+                    <input type="range" min={0} max={duration || 0} value={currentTime} onChange={handleSeek} className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer range-sm accent-cyan-400" aria-label="Seek slider" />
+                    <span className="text-xs font-mono w-12 text-center" aria-label="Total duration">{formatTime(duration || 0)}</span>
+                </div>
+                 <div className="flex items-center gap-2">
+                    <button onClick={toggleMute} className="p-2 rounded-full hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400" aria-label={isMuted || volume === 0 ? 'Unmute' : 'Mute'}>
+                        {isMuted || volume === 0 ? <VolumeMuteIcon /> : <VolumeHighIcon />}
+                    </button>
+                    <input type="range" min={0} max={1} step={0.1} value={isMuted ? 0 : volume} onChange={handleVolumeChange} className="w-20 sm:w-24 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer range-sm accent-cyan-400" aria-label="Volume slider" />
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
+// --- RESILIENT IMAGE FRAME WITH PREVIEW SIZING & LIGHTBOX INSPECT ---
 const ImageFrame: React.FC<{
     frame: Frame;
     onUpdatePrompt: (frameId: string, newPrompt: string) => void;
@@ -174,6 +242,12 @@ const ImageFrame: React.FC<{
 }> = ({ frame, onUpdatePrompt, onDelete, onSave, onProcess, onTextAction, onOpenFile, isProcessing, imageModelOptions, defaultImageModel }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedModel, setSelectedModel] = useState(defaultImageModel || 'gemini-3-pro-image');
+    
+    // Preview Resize States (Preview Only - Original Data 100% Intact)
+    const [fitMode, setFitMode] = useState<PreviewFitMode>('fit-width');
+    const [zoom, setZoom] = useState<number>(100);
+    const [isLightboxOpen, setIsLightboxOpen] = useState<boolean>(false);
+    const [imgDimensions, setImgDimensions] = useState<{ width: number; height: number } | null>(null);
 
     useEffect(() => {
         if (defaultImageModel) {
@@ -185,6 +259,11 @@ const ImageFrame: React.FC<{
         if (e.target.files?.[0]) {
             onOpenFile(frame.id, e.target.files[0]);
         }
+    };
+
+    const handleImageLoaded = (e: React.SyntheticEvent<HTMLImageElement>) => {
+        const img = e.currentTarget;
+        setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight });
     };
 
     const handleButtonClick = (action: string) => {
@@ -202,64 +281,141 @@ const ImageFrame: React.FC<{
         }
     };
 
+    const handleZoomChange = (newZoom: number) => {
+        setFitMode('custom-zoom');
+        setZoom(newZoom);
+    };
+
+    const handleResetZoom = () => {
+        setFitMode('standard');
+        setZoom(100);
+    };
+
     return (
-        <section className="mt-8 w-full max-w-[500px] box-content" aria-labelledby={`frame-heading-${frame.id}`}>
-            <h2 id={`frame-heading-${frame.id}`} className="text-2xl font-bold mb-4 text-center text-gray-300">{frame.title}</h2>
-            <div className="bg-gray-800 rounded-xl shadow-2xl p-2 flex flex-col gap-4">
-                <img src={frame.src} alt={frame.title} className="w-full h-auto rounded-md"/>
+        <section 
+            className={`mt-8 w-full transition-all duration-300 box-content ${
+                fitMode === 'fit-width' ? 'max-w-4xl' : 
+                fitMode === 'fit-height' ? 'max-w-3xl' : 
+                fitMode === 'custom-zoom' ? 'max-w-4xl' : 
+                'max-w-[500px]'
+            }`} 
+            aria-labelledby={`frame-heading-${frame.id}`}
+        >
+            <div className="flex items-center justify-between mb-3 px-1">
+                <h2 id={`frame-heading-${frame.id}`} className="text-xl sm:text-2xl font-bold text-gray-200 truncate">
+                    {frame.title}
+                </h2>
+
+                {imgDimensions && (
+                    <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-700/80 text-zinc-400 shrink-0">
+                        {imgDimensions.width} × {imgDimensions.height} px
+                    </span>
+                )}
+            </div>
+
+            <div className="bg-gray-800 rounded-2xl shadow-2xl p-3 sm:p-4 flex flex-col gap-3.5 border border-zinc-700/60">
+                
+                {/* Preview Toolbar */}
+                <PreviewControls
+                    fitMode={fitMode}
+                    zoom={zoom}
+                    onSetFitMode={setFitMode}
+                    onZoomChange={handleZoomChange}
+                    onResetZoom={handleResetZoom}
+                    onToggleFullscreen={() => setIsLightboxOpen(true)}
+                    title="Image Preview"
+                />
+
+                {/* Image Viewport Container */}
+                <div className={`w-full overflow-hidden flex items-center justify-center bg-black/70 rounded-xl border border-zinc-700/70 p-1.5 transition-all ${
+                    fitMode === 'fit-height' ? 'max-h-[50vh]' : ''
+                }`}>
+                    <div className={`w-full flex items-center justify-center overflow-auto transition-all ${
+                        fitMode === 'custom-zoom' ? 'max-h-[55vh]' : ''
+                    }`}>
+                        <img 
+                            src={frame.src} 
+                            alt={frame.title}
+                            onLoad={handleImageLoaded}
+                            style={{
+                                transform: fitMode === 'custom-zoom' ? `scale(${zoom / 100})` : 'none',
+                                transformOrigin: 'center center',
+                                transition: 'transform 0.15s ease-out'
+                            }}
+                            className={`rounded-lg cursor-pointer transition-all ${
+                                fitMode === 'fit-width' ? 'w-full h-auto object-contain max-h-[75vh]' :
+                                fitMode === 'fit-height' ? 'max-h-[48vh] w-auto object-contain' :
+                                fitMode === 'custom-zoom' ? 'max-w-none max-h-none' :
+                                'w-full max-w-[500px] h-auto object-contain'
+                            }`}
+                            onClick={() => setIsLightboxOpen(true)}
+                            title="Click to inspect in fullscreen lightbox"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between px-1 text-[10px] text-zinc-500 font-mono">
+                    <span>* ขนาดและความละเอียดของข้อมูลภาพจริงคงเดิม 100%</span>
+                    <button 
+                        onClick={() => setIsLightboxOpen(true)}
+                        className="text-indigo-400 hover:text-indigo-300 underline"
+                    >
+                        ขยายตรวจสอบภาพแบบเต็มจอ ↗
+                    </button>
+                </div>
                 
                 {/* Text Actions */}
-                <div className="grid grid-cols-4 gap-2 px-1">
+                <div className="grid grid-cols-4 gap-2">
                     <button 
                         onClick={() => onTextAction(frame.id, 'idea')}
                         disabled={isProcessing}
-                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[10px] py-1.5 rounded-md transition-colors uppercase font-bold"
+                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[11px] py-2 rounded-lg transition-colors uppercase font-bold"
                     >
                         Idea
                     </button>
                     <button 
                         onClick={() => onTextAction(frame.id, 'polish')}
                         disabled={isProcessing}
-                        className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-[10px] py-1.5 rounded-md transition-colors uppercase font-bold"
+                        className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-[11px] py-2 rounded-lg transition-colors uppercase font-bold"
                     >
                         Polish
                     </button>
                     <button 
                         onClick={() => onTextAction(frame.id, 'translate')}
                         disabled={isProcessing}
-                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[10px] py-1.5 rounded-md transition-colors uppercase font-bold"
+                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] py-2 rounded-lg transition-colors uppercase font-bold"
                     >
                         Translate
                     </button>
                     <button 
                         onClick={() => onTextAction(frame.id, 'caption')}
                         disabled={isProcessing}
-                        className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-[10px] py-1.5 rounded-md transition-colors uppercase font-bold"
+                        className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-[11px] py-2 rounded-lg transition-colors uppercase font-bold"
                     >
                         Caption
                     </button>
                 </div>
 
                 {frame.textOutput && (
-                    <div className="bg-zinc-950/60 border border-zinc-700 rounded-xl p-3 text-xs text-zinc-300 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+                    <div className="bg-zinc-950/70 border border-zinc-700 rounded-xl p-3 text-xs text-zinc-300 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
                         <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">AI Output:</div>
                         {frame.textOutput}
                     </div>
                 )}
 
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-sm">
-                    <button onClick={() => handleButtonClick('open')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Open</button>
-                    <button onClick={() => handleButtonClick('save')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Save</button>
-                    <button onClick={() => handleButtonClick('remove_logo')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Logo</button>
-                    <button onClick={() => handleButtonClick('remove_text')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Text</button>
-                    <button onClick={() => handleButtonClick('clear')} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Clear</button>
+                    <button onClick={() => handleButtonClick('open')} className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Open</button>
+                    <button onClick={() => handleButtonClick('save')} className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Save</button>
+                    <button onClick={() => handleButtonClick('remove_logo')} className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Logo</button>
+                    <button onClick={() => handleButtonClick('remove_text')} className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Text</button>
+                    <button onClick={() => handleButtonClick('clear')} className="bg-red-600/80 hover:bg-red-600 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Clear</button>
                 </div>
 
                 <textarea
                     value={frame.prompt}
                     onChange={(e) => onUpdatePrompt(frame.id, e.target.value)}
                     rows={3}
-                    className="bg-gray-900 text-gray-200 rounded-lg p-3 w-full focus:ring-2 focus:ring-cyan-400 focus:outline-none transition text-sm"
+                    className="bg-gray-900 text-gray-200 rounded-xl p-3 w-full focus:ring-2 focus:ring-cyan-400 focus:outline-none transition text-sm border border-zinc-700/60"
                     placeholder="Enter a prompt to edit the image with AI..."
                 />
                 
@@ -272,7 +428,7 @@ const ImageFrame: React.FC<{
                     <select 
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}
-                        className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none font-medium"
+                        className="bg-zinc-900 border border-zinc-700 rounded-xl p-2.5 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none font-medium"
                     >
                         {imageModelOptions.map((m) => (
                             <option key={m.id || m.modelId} value={m.modelId}>
@@ -285,7 +441,7 @@ const ImageFrame: React.FC<{
                 <button
                     onClick={() => handleButtonClick('process_prompt')}
                     disabled={isProcessing || !frame.prompt.trim()}
-                    className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-900/60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out transform hover:scale-[1.02] active:scale-95 focus:outline-none focus:ring-2 focus:ring-purple-500 flex items-center justify-center gap-2"
+                    className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-900/60 disabled:cursor-not-allowed text-white font-bold py-3.5 px-4 rounded-xl transition duration-200 ease-in-out transform hover:scale-[1.01] active:scale-95 focus:outline-none focus:ring-2 focus:ring-purple-500 flex items-center justify-center gap-2 text-sm shadow-lg shadow-purple-600/20"
                 >
                     {isProcessing ? (
                         <>
@@ -297,7 +453,17 @@ const ImageFrame: React.FC<{
                     )}
                 </button>
             </div>
+            
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+
+            {/* Fullscreen Lightbox Modal */}
+            <ImageLightboxModal
+                isOpen={isLightboxOpen}
+                onClose={() => setIsLightboxOpen(false)}
+                src={frame.src}
+                title={frame.title}
+                originalFileName={frame.originalFileName}
+            />
         </section>
     );
 };
@@ -326,6 +492,11 @@ const App: React.FC = () => {
     const [successNotice, setSuccessNotice] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     
+    // Video Preview Sizing State (Preview only)
+    const [videoFitMode, setVideoFitMode] = useState<PreviewFitMode>('standard');
+    const [videoZoom, setVideoZoom] = useState<number>(100);
+    const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+
     // Modals
     const [isAiLogModalOpen, setIsAiLogModalOpen] = useState<boolean>(false);
     const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
@@ -339,9 +510,8 @@ const App: React.FC = () => {
     const [volume, setVolume] = useState<number>(1);
     const [isMuted, setIsMuted] = useState<boolean>(false);
 
-    // --- REAL-TIME CENTRALIZED REGISTRY SUBSCRIPTION (Requirement 2) ---
+    // --- REAL-TIME CENTRALIZED REGISTRY SUBSCRIPTION ---
     useEffect(() => {
-        // Initial fetch
         fetchCentralModels().then((models) => {
             if (models && models.length > 0) {
                 const textModels = filterModelsByCategory(models, 'text_reasoning');
@@ -357,7 +527,6 @@ const App: React.FC = () => {
             }
         });
 
-        // Real-time Firestore onSnapshot listener
         const unsubscribe = subscribeCentralModels((updatedModels) => {
             if (updatedModels && updatedModels.length > 0) {
                 const textModels = filterModelsByCategory(updatedModels, 'text_reasoning');
@@ -490,7 +659,13 @@ const App: React.FC = () => {
     };
 
     const onLoadedMetadata = () => {
-        if (videoRef.current) setDuration(videoRef.current.duration);
+        if (videoRef.current) {
+            setDuration(videoRef.current.duration);
+            setVideoDimensions({
+                width: videoRef.current.videoWidth,
+                height: videoRef.current.videoHeight
+            });
+        }
     };
 
     const handleSkipToEnd = () => {
@@ -499,28 +674,46 @@ const App: React.FC = () => {
         if (!videoRef.current.paused) videoRef.current.pause();
     };
 
-    // --- FRAME HANDLERS ---
+    // --- VIDEO PREVIEW ZOOM HANDLERS ---
+    const handleVideoZoomChange = (newZoom: number) => {
+        setVideoFitMode('custom-zoom');
+        setVideoZoom(newZoom);
+    };
+
+    const handleVideoResetZoom = () => {
+        setVideoFitMode('standard');
+        setVideoZoom(100);
+    };
+
+    // --- FRAME HANDLERS (ORIGINAL NATIVE RESOLUTION 100% PRESERVED) ---
     const handleCaptureFrame = () => {
         if (!videoRef.current) return;
         const video = videoRef.current;
+        
+        // Always captures from native videoWidth and videoHeight - NEVER affected by preview zoom/scale
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth || 1280;
         canvas.height = video.videoHeight || 720;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
         const dataUrl = canvas.toDataURL('image/png');
         const originalNameWithoutExt = videoFileName.split('.').slice(0, -1).join('.') || videoFileName || 'video';
+        
         const newFrame: Frame = {
             id: crypto.randomUUID ? crypto.randomUUID() : `frame-${Date.now()}`,
             src: dataUrl,
-            title: 'Captured Frame',
+            title: `Captured Frame (${canvas.width}×${canvas.height})`,
             prompt: '',
-            originalFileName: `${formatTimeForFilename(currentTime)} of ${formatTimeForFilename(duration)} - ${originalNameWithoutExt}.png`
+            originalFileName: `${formatTimeForFilename(currentTime)} of ${formatTimeForFilename(duration)} - ${originalNameWithoutExt}.png`,
+            naturalWidth: canvas.width,
+            naturalHeight: canvas.height
         };
+        
         setFrames(prev => [newFrame, ...prev]);
-        setSuccessNotice('Frame captured successfully!');
-        setTimeout(() => setSuccessNotice(''), 2000);
+        setSuccessNotice(`Frame captured in full native ${canvas.width}×${canvas.height} resolution!`);
+        setTimeout(() => setSuccessNotice(''), 3000);
     };
 
     // --- RESILIENT IMAGE PROCESSING WITH CASCADE FALLBACK ---
@@ -532,6 +725,7 @@ const App: React.FC = () => {
         setError('');
 
         try {
+            // Full pristine original base64 is passed - untouched by preview zoom
             const base64Data = sourceFrame.src.split(',')[1] || sourceFrame.src;
             const mimeType = sourceFrame.src.match(/data:(.*);/)?.[1] || 'image/png';
 
@@ -764,9 +958,14 @@ const App: React.FC = () => {
                 </p>
             </header>
 
-            {/* Main Video Section */}
-            <main className="bg-gray-800 rounded-2xl shadow-2xl p-4 w-full max-w-[500px] box-content border border-zinc-700/50">
-                <div className="w-[500px] h-auto flex items-center justify-center">
+            {/* Main Video Section with Dynamic Sizing Container */}
+            <main className={`bg-gray-800 rounded-2xl shadow-2xl p-4 w-full transition-all duration-300 box-content border border-zinc-700/50 ${
+                videoFitMode === 'fit-width' ? 'max-w-4xl' : 
+                videoFitMode === 'fit-height' ? 'max-w-3xl' : 
+                videoFitMode === 'custom-zoom' ? 'max-w-4xl' : 
+                'max-w-[500px]'
+            }`}>
+                <div className="w-full h-auto flex items-center justify-center">
                     {videoSrc ? (
                         <VideoPlayer 
                             src={videoSrc} videoRef={videoRef} isPlaying={isPlaying} currentTime={currentTime}
@@ -775,6 +974,12 @@ const App: React.FC = () => {
                             onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)}
                             onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata}
                             onEnded={() => setIsPlaying(false)} onSkipToEnd={handleSkipToEnd}
+                            fitMode={videoFitMode}
+                            zoom={videoZoom}
+                            onSetFitMode={setVideoFitMode}
+                            onZoomChange={handleVideoZoomChange}
+                            onResetZoom={handleVideoResetZoom}
+                            videoDimensions={videoDimensions}
                         />
                     ) : (
                         <UploadPlaceholder onClick={handleUploadAreaClick} />
@@ -800,8 +1005,13 @@ const App: React.FC = () => {
                     </button>
                     <button
                         onClick={handleCaptureFrame}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl transition duration-200 transform hover:scale-105 active:scale-95 shadow-lg shadow-indigo-600/20 text-sm"
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl transition duration-200 transform hover:scale-105 active:scale-95 shadow-lg shadow-indigo-600/20 text-sm flex items-center gap-2"
+                        title="Captures frame at 100% original video resolution"
                     >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
                         Capture Frame
                     </button>
                 </div>
@@ -826,7 +1036,7 @@ const App: React.FC = () => {
                  ))}
             </div>
 
-            {/* FLOATING MENU (Requirement 6) */}
+            {/* FLOATING MENU */}
             <FloatingMenu
                 selectedTextModel={selectedTextModel}
                 onSelectTextModel={setSelectedTextModel}
@@ -838,13 +1048,13 @@ const App: React.FC = () => {
                 hasVideo={Boolean(videoSrc)}
             />
 
-            {/* AI EXECUTION LOG MODAL (Requirement 7) */}
+            {/* AI EXECUTION LOG MODAL */}
             <AiLogModal
                 isOpen={isAiLogModalOpen}
                 onClose={() => setIsAiLogModalOpen(false)}
             />
 
-            {/* SAFE API KEY MODAL (Requirement 7) */}
+            {/* SAFE API KEY MODAL */}
             <ApiKeyModal
                 isOpen={isApiKeyModalOpen}
                 onClose={() => setIsApiKeyModalOpen(false)}
