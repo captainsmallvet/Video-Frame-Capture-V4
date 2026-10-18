@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { GoogleGenAI, Modality } from '@google/genai';
 import { 
   fetchCentralModels, 
+  subscribeCentralModels,
   filterModelsByCategory, 
   getDefaultModelId, 
   FALLBACK_TEXT_REASONING_MODELS, 
@@ -10,6 +9,11 @@ import {
   AIModelOption, 
   APP_IMPORTANCE_LEVEL 
 } from './services/modelService';
+import { runWithModelTracking } from './services/geminiClientService';
+import { FloatingMenu } from './components/FloatingMenu';
+import { AiLogModal } from './components/AiLogModal';
+import { ApiKeyModal } from './components/ApiKeyModal';
+import { executionTracker } from './services/executionTracker';
 
 // --- FRAME INTERFACE ---
 interface Frame {
@@ -103,7 +107,7 @@ const UploadPlaceholder: React.FC<{ onClick: () => void }> = ({ onClick }) => (
 
 const VideoPlayer: React.FC<{
     src: string;
-    videoRef: React.RefObject<HTMLVideoElement>;
+    videoRef: React.RefObject<HTMLVideoElement | null>;
     isPlaying: boolean;
     currentTime: number;
     duration: number;
@@ -182,6 +186,7 @@ const ImageFrame: React.FC<{
             onOpenFile(frame.id, e.target.files[0]);
         }
     };
+
     const handleButtonClick = (action: string) => {
         switch (action) {
             case 'open': fileInputRef.current?.click(); break;
@@ -196,6 +201,7 @@ const ImageFrame: React.FC<{
                 break;
         }
     };
+
     return (
         <section className="mt-8 w-full max-w-[500px] box-content" aria-labelledby={`frame-heading-${frame.id}`}>
             <h2 id={`frame-heading-${frame.id}`} className="text-2xl font-bold mb-4 text-center text-gray-300">{frame.title}</h2>
@@ -207,35 +213,36 @@ const ImageFrame: React.FC<{
                     <button 
                         onClick={() => onTextAction(frame.id, 'idea')}
                         disabled={isProcessing}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] py-1 rounded-md transition-colors uppercase font-bold"
+                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[10px] py-1.5 rounded-md transition-colors uppercase font-bold"
                     >
                         Idea
                     </button>
                     <button 
                         onClick={() => onTextAction(frame.id, 'polish')}
                         disabled={isProcessing}
-                        className="bg-teal-600 hover:bg-teal-700 text-white text-[10px] py-1 rounded-md transition-colors uppercase font-bold"
+                        className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-[10px] py-1.5 rounded-md transition-colors uppercase font-bold"
                     >
                         Polish
                     </button>
                     <button 
                         onClick={() => onTextAction(frame.id, 'translate')}
                         disabled={isProcessing}
-                        className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] py-1 rounded-md transition-colors uppercase font-bold"
+                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[10px] py-1.5 rounded-md transition-colors uppercase font-bold"
                     >
                         Translate
                     </button>
                     <button 
                         onClick={() => onTextAction(frame.id, 'caption')}
                         disabled={isProcessing}
-                        className="bg-orange-600 hover:bg-orange-700 text-white text-[10px] py-1 rounded-md transition-colors uppercase font-bold"
+                        className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-[10px] py-1.5 rounded-md transition-colors uppercase font-bold"
                     >
                         Caption
                     </button>
                 </div>
 
                 {frame.textOutput && (
-                    <div className="bg-zinc-950/50 border border-zinc-700 rounded-md p-3 text-xs text-zinc-300 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+                    <div className="bg-zinc-950/60 border border-zinc-700 rounded-xl p-3 text-xs text-zinc-300 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+                        <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">AI Output:</div>
                         {frame.textOutput}
                     </div>
                 )}
@@ -247,21 +254,25 @@ const ImageFrame: React.FC<{
                     <button onClick={() => handleButtonClick('remove_text')} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Text</button>
                     <button onClick={() => handleButtonClick('clear')} className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-2 rounded-lg transition-colors text-xs">Clear</button>
                 </div>
+
                 <textarea
                     value={frame.prompt}
                     onChange={(e) => onUpdatePrompt(frame.id, e.target.value)}
                     rows={3}
-                    className="bg-gray-900 text-gray-200 rounded-lg p-3 w-full focus:ring-2 focus:ring-cyan-400 focus:outline-none transition"
-                    placeholder="Enter a prompt to edit the image..."
+                    className="bg-gray-900 text-gray-200 rounded-lg p-3 w-full focus:ring-2 focus:ring-cyan-400 focus:outline-none transition text-sm"
+                    placeholder="Enter a prompt to edit the image with AI..."
                 />
                 
-                {/* Model Selector Dropdown */}
+                {/* Image Model Selector */}
                 <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold ml-1">AI Image Model</label>
+                    <label className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold ml-1 flex items-center justify-between">
+                        <span>AI Image Model</span>
+                        <span className="text-[9px] text-indigo-400 font-normal">Cascade Protected</span>
+                    </label>
                     <select 
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}
-                        className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        className="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-zinc-300 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none font-medium"
                     >
                         {imageModelOptions.map((m) => (
                             <option key={m.id || m.modelId} value={m.modelId}>
@@ -274,9 +285,16 @@ const ImageFrame: React.FC<{
                 <button
                     onClick={() => handleButtonClick('process_prompt')}
                     disabled={isProcessing || !frame.prompt.trim()}
-                    className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-900/80 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-purple-500 flex items-center justify-center"
+                    className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-900/60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out transform hover:scale-[1.02] active:scale-95 focus:outline-none focus:ring-2 focus:ring-purple-500 flex items-center justify-center gap-2"
                 >
-                    {isProcessing ? <><SpinnerIcon /> Processing...</> : 'Process with Prompt'}
+                    {isProcessing ? (
+                        <>
+                            <SpinnerIcon /> 
+                            <span>Resilient AI Processing...</span>
+                        </>
+                    ) : (
+                        'Process with Prompt'
+                    )}
                 </button>
             </div>
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
@@ -302,78 +320,98 @@ const App: React.FC = () => {
     
     // --- APP STATES ---
     const [videoSrc, setVideoSrc] = useState<string | null>(null);
-    const [error, setError] = useState<string>('');
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const videoRef = useRef<HTMLVideoElement>(null);
     const [videoFileName, setVideoFileName] = useState<string>('');
     const [frames, setFrames] = useState<Frame[]>([]);
+    const [error, setError] = useState<string>('');
+    const [successNotice, setSuccessNotice] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
+    
+    // Modals
+    const [isAiLogModalOpen, setIsAiLogModalOpen] = useState<boolean>(false);
+    const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
+    
+    // Video Player State
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isPlaying, setIsPlaying] = useState<boolean>(false);
+    const [currentTime, setCurrentTime] = useState<number>(0);
+    const [duration, setDuration] = useState<number>(0);
+    const [volume, setVolume] = useState<number>(1);
+    const [isMuted, setIsMuted] = useState<boolean>(false);
 
-    // Video player state
-    const [isPlaying, setIsPlaying] = useState(true);
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [volume, setVolume] = useState(1);
-    const [isMuted, setIsMuted] = useState(false);
-
-    // --- FETCH CENTRAL MODELS FROM FIRESTORE ON PAGE LOAD / REFRESH ---
+    // --- REAL-TIME CENTRALIZED REGISTRY SUBSCRIPTION (Requirement 2) ---
     useEffect(() => {
-        let isMounted = true;
-        async function loadCentralModels() {
-            const models = await fetchCentralModels();
-            if (!isMounted) return;
-
+        // Initial fetch
+        fetchCentralModels().then((models) => {
             if (models && models.length > 0) {
                 const textModels = filterModelsByCategory(models, 'text_reasoning');
                 if (textModels.length > 0) {
                     setTextModelOptions(textModels);
-                    const defText = getDefaultModelId(textModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.6-flash');
-                    setSelectedTextModel(defText);
+                    setSelectedTextModel(prev => prev || getDefaultModelId(textModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.6-flash'));
                 }
-
                 const imgModels = filterModelsByCategory(models, 'image_gen');
                 if (imgModels.length > 0) {
                     setImageModelOptions(imgModels);
-                    const defImg = getDefaultModelId(imgModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3-pro-image');
-                    setDefaultImageModel(defImg);
+                    setDefaultImageModel(prev => prev || getDefaultModelId(imgModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3-pro-image'));
                 }
             }
-        }
+        });
 
-        loadCentralModels();
-        return () => { isMounted = false; };
+        // Real-time Firestore onSnapshot listener
+        const unsubscribe = subscribeCentralModels((updatedModels) => {
+            if (updatedModels && updatedModels.length > 0) {
+                const textModels = filterModelsByCategory(updatedModels, 'text_reasoning');
+                if (textModels.length > 0) {
+                    setTextModelOptions(textModels);
+                }
+
+                const imgModels = filterModelsByCategory(updatedModels, 'image_gen');
+                if (imgModels.length > 0) {
+                    setImageModelOptions(imgModels);
+                }
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
     }, []);
 
     // --- INITIALIZATION ---
     useEffect(() => {
         const savedKey = localStorage.getItem('GEMINI_CUSTOM_API_KEY');
-        const envKey = process.env.API_KEY;
+        const envKey = (typeof process !== 'undefined' ? (process.env.API_KEY || process.env.GEMINI_API_KEY) : '') || '';
         const initialKey = savedKey || envKey || '';
         
         setActiveApiKey(initialKey);
         setNotepadKey(initialKey || 'no API key');
     }, []);
 
-    // --- NOTEPAD HANDLERS ---
+    // --- NOTEPAD & KEY HANDLERS ---
     const handleSendKey = () => {
         const cleanKey = notepadKey.trim();
         if (cleanKey && cleanKey !== 'no API key') {
             localStorage.setItem('GEMINI_CUSTOM_API_KEY', cleanKey);
             setActiveApiKey(cleanKey);
             setError('');
+            setSuccessNotice('Gemini API Key activated successfully!');
+            setTimeout(() => setSuccessNotice(''), 3000);
         } else {
-            setError('Please enter a valid API Key');
+            setError('Please enter a valid API Key.');
         }
     };
 
     const handleCopyKey = () => {
         navigator.clipboard.writeText(notepadKey).then(() => {
-            // Success
+            setSuccessNotice('Copied key to clipboard.');
+            setTimeout(() => setSuccessNotice(''), 2000);
         });
     };
 
     const handleClearKey = () => {
         setNotepadKey('');
+        setActiveApiKey('');
+        localStorage.removeItem('GEMINI_CUSTOM_API_KEY');
     };
 
     // --- VIDEO HANDLERS ---
@@ -415,10 +453,12 @@ const App: React.FC = () => {
         if (!videoRef.current) return;
         videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause();
     };
+
     const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (!videoRef.current) return;
         videoRef.current.currentTime = Number(event.target.value);
     };
+
     const handleVolumeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (!videoRef.current) return;
         const newVolume = Number(event.target.value);
@@ -432,6 +472,7 @@ const App: React.FC = () => {
              setIsMuted(true);
         }
     };
+
     const toggleMute = () => {
         if (!videoRef.current) return;
         const newMutedState = !isMuted;
@@ -443,12 +484,15 @@ const App: React.FC = () => {
             videoRef.current.volume = newVolume;
         }
     };
+
     const onTimeUpdate = () => {
         if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
     };
+
     const onLoadedMetadata = () => {
         if (videoRef.current) setDuration(videoRef.current.duration);
     };
+
     const handleSkipToEnd = () => {
         if (!videoRef.current) return;
         videoRef.current.currentTime = videoRef.current.duration;
@@ -460,133 +504,134 @@ const App: React.FC = () => {
         if (!videoRef.current) return;
         const video = videoRef.current;
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/png');
-        const originalNameWithoutExt = videoFileName.split('.').slice(0, -1).join('.') || videoFileName;
+        const originalNameWithoutExt = videoFileName.split('.').slice(0, -1).join('.') || videoFileName || 'video';
         const newFrame: Frame = {
-            id: crypto.randomUUID(),
+            id: crypto.randomUUID ? crypto.randomUUID() : `frame-${Date.now()}`,
             src: dataUrl,
             title: 'Captured Frame',
             prompt: '',
             originalFileName: `${formatTimeForFilename(currentTime)} of ${formatTimeForFilename(duration)} - ${originalNameWithoutExt}.png`
         };
         setFrames(prev => [newFrame, ...prev]);
+        setSuccessNotice('Frame captured successfully!');
+        setTimeout(() => setSuccessNotice(''), 2000);
     };
 
+    // --- RESILIENT IMAGE PROCESSING WITH CASCADE FALLBACK ---
     const handleImageProcessing = async (sourceFrameId: string, prompt: string, resultTitle: string, model: string) => {
         const sourceFrame = frames.find(f => f.id === sourceFrameId);
         if (!sourceFrame || isProcessing) return;
-        if (!activeApiKey) {
-            setError('No API Key detected. Please enter a key in the Notepad bar above and click Send.');
-            return;
-        }
 
         setIsProcessing(true);
         setError('');
+
         try {
-            const base64Data = sourceFrame.src.split(',')[1];
+            const base64Data = sourceFrame.src.split(',')[1] || sourceFrame.src;
             const mimeType = sourceFrame.src.match(/data:(.*);/)?.[1] || 'image/png';
-            const ai = new GoogleGenAI({ apiKey: activeApiKey });
-            
-            const response = await ai.models.generateContent({
-                model: model, 
-                contents: {
-                    parts: [
-                        { inlineData: { data: base64Data, mimeType } },
-                        { text: prompt },
-                    ],
-                },
-                config: { responseModalities: [Modality.IMAGE] },
+
+            const result = await runWithModelTracking({
+                operation: 'image_gen',
+                actionName: resultTitle,
+                prompt,
+                imageBase64: base64Data,
+                mimeType,
+                requestedModel: model,
+                apiKey: activeApiKey,
+                availableModels: imageModelOptions
             });
-            
-            if (response.promptFeedback?.blockReason) {
-                throw new Error(`Request was blocked. Reason: ${response.promptFeedback.blockReason}`);
-            }
-            
-            const candidate = response.candidates?.[0];
-            const imagePart = candidate?.content?.parts?.find(p => p.inlineData);
-            const processedBase64 = imagePart?.inlineData?.data;
-            
-            if (processedBase64) {
+
+            if (result.imageBase64) {
                 const newFrame: Frame = {
-                    id: crypto.randomUUID(),
-                    src: `data:image/png;base64,${processedBase64}`,
-                    title: resultTitle,
+                    id: crypto.randomUUID ? crypto.randomUUID() : `frame-${Date.now()}`,
+                    src: `data:${result.mimeType || 'image/png'};base64,${result.imageBase64}`,
+                    title: `${resultTitle} (${result.actualModel})`,
                     prompt: '',
                     originalFileName: `processed - ${sourceFrame.originalFileName}`
                 };
                 setFrames(prev => [newFrame, ...prev]);
-            } else {
-                 let reason = response.text;
-                if (!reason && candidate?.finishReason && candidate.finishReason !== 'STOP') {
-                     reason = `Generation stopped due to: ${candidate.finishReason}`;
+
+                if (result.isFallback) {
+                    setSuccessNotice(`Succeeded using fallback model: ${result.actualModel} (${result.latencyMs}ms)`);
+                } else {
+                    setSuccessNotice(`Image processed with ${result.actualModel} in ${result.latencyMs}ms!`);
                 }
-                throw new Error(reason || "Could not process image. The API returned no image data.");
+                setTimeout(() => setSuccessNotice(''), 4000);
             }
         } catch (err: any) {
             console.error("Error processing image:", err);
-            setError(`Failed to process image: ${err.message || 'Please try again.'}`);
+            setError(`Image processing failed: ${err.message || 'Please check your API key.'}`);
         } finally {
             setIsProcessing(false);
         }
     };
 
+    // --- RESILIENT TEXT REASONING WITH CASCADE FALLBACK ---
     const handleTextProcessing = async (frameId: string, action: 'idea' | 'polish' | 'translate' | 'caption') => {
         const sourceFrame = frames.find(f => f.id === frameId);
         if (!sourceFrame || isProcessing) return;
-        if (!activeApiKey) {
-            setError('No API Key detected.');
-            return;
-        }
 
         setIsProcessing(true);
         setError('');
+
         try {
-            const ai = new GoogleGenAI({ apiKey: activeApiKey });
-            const base64Data = sourceFrame.src.split(',')[1];
+            const base64Data = sourceFrame.src.split(',')[1] || sourceFrame.src;
             const mimeType = sourceFrame.src.match(/data:(.*);/)?.[1] || 'image/png';
 
             let prompt = "";
+            let actionName = "";
             switch (action) {
                 case 'idea':
+                    actionName = "Idea Generation";
                     prompt = "Describe this image and suggest 3 creative AI image editing ideas to transform it.";
                     break;
                 case 'polish':
+                    actionName = "Prompt Polish";
                     prompt = `Improve and expand this image editing prompt for better results: "${sourceFrame.prompt || 'make it look cinematic'}". Return only the improved prompt text.`;
                     break;
                 case 'translate':
+                    actionName = "Translation";
                     prompt = "Translate any text visible in the image or provide a translation of what is happening in the scene from English to Thai and vice versa.";
                     break;
                 case 'caption':
+                    actionName = "Social Caption";
                     prompt = "Create 3 catchy social media captions for this specific image scene.";
                     break;
             }
 
-            const response = await ai.models.generateContent({
-                model: selectedTextModel,
-                contents: {
-                    parts: [
-                        { inlineData: { data: base64Data, mimeType } },
-                        { text: prompt },
-                    ],
-                },
+            const result = await runWithModelTracking({
+                operation: 'text_reasoning',
+                actionName,
+                prompt,
+                imageBase64: base64Data,
+                mimeType,
+                requestedModel: selectedTextModel,
+                apiKey: activeApiKey,
+                availableModels: textModelOptions
             });
 
-            const textResult = response.text;
+            const textResult = result.text;
             if (textResult) {
                 setFrames(prev => prev.map(f => f.id === frameId ? { ...f, textOutput: textResult } : f));
-                // If polishing, also update the prompt textarea
                 if (action === 'polish') {
                     setFrames(prev => prev.map(f => f.id === frameId ? { ...f, prompt: textResult.trim() } : f));
                 }
+
+                if (result.isFallback) {
+                    setSuccessNotice(`Recovered with cascade model: ${result.actualModel} (${result.latencyMs}ms)`);
+                } else {
+                    setSuccessNotice(`Generated with ${result.actualModel} in ${result.latencyMs}ms`);
+                }
+                setTimeout(() => setSuccessNotice(''), 3000);
             }
         } catch (err: any) {
             console.error("Error processing text reasoning:", err);
-            setError(`Text processing failed: ${err.message || 'Please try again.'}`);
+            setError(`Text processing failed: ${err.message || 'Please check your API key.'}`);
         } finally {
             setIsProcessing(false);
         }
@@ -623,27 +668,35 @@ const App: React.FC = () => {
         };
         reader.readAsDataURL(file);
     };
-    
-    // --- RENDER ---
+
     return (
-        <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-start font-sans text-white">
+        <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-start font-sans text-white pb-24">
             
-            {/* API KEY & GLOBAL SETTINGS BAR */}
-            <div className="w-full bg-zinc-950 border-b border-zinc-800 p-3 shadow-lg sticky top-0 z-50">
-                <div className="max-w-6xl mx-auto flex flex-col gap-3">
+            {/* TOP BAR: API KEY & DUAL-LAYER RESILIENT SETTINGS */}
+            <div className="w-full bg-zinc-950/95 backdrop-blur-md border-b border-zinc-800 p-3 shadow-lg sticky top-0 z-30">
+                <div className="max-w-6xl mx-auto flex flex-col gap-2.5">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 px-1">
-                        <div className="flex items-center gap-3">
-                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${activeApiKey ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></span>
-                                API Key:
-                            </label>
+                        
+                        {/* Status + Model Selection */}
+                        <div className="flex items-center flex-wrap gap-3">
+                            <button
+                                onClick={() => setIsApiKeyModalOpen(true)}
+                                className="flex items-center gap-2 px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors text-xs font-bold uppercase tracking-wider text-zinc-400 hover:text-white"
+                                title="Click to open API Key Settings"
+                            >
+                                <span className={`w-2 h-2 rounded-full ${activeApiKey ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-rose-500'} animate-pulse`} />
+                                Key Status: {activeApiKey ? 'Active' : 'Unset'}
+                            </button>
                             
-                            <div className="flex items-center gap-2 border-l border-zinc-700 pl-3 ml-1">
-                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Text Reasoning Model:</label>
+                            <div className="flex items-center gap-2 border-l border-zinc-800 pl-3">
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest hidden sm:inline">
+                                    Text Reasoning:
+                                </label>
                                 <select 
                                     value={selectedTextModel}
                                     onChange={(e) => setSelectedTextModel(e.target.value)}
-                                    className="bg-black border border-zinc-700 rounded-md px-2 py-1 text-[10px] text-zinc-300 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-bold uppercase"
+                                    className="bg-black border border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-zinc-300 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-medium max-w-[200px] sm:max-w-none truncate"
+                                    title="Primary text reasoning model (Auto cascades if unavailable)"
                                 >
                                     {textModelOptions.map((m) => (
                                         <option key={m.id || m.modelId} value={m.modelId}>
@@ -654,46 +707,65 @@ const App: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        {/* Top Bar Actions */}
+                        <div className="flex items-center gap-2 self-end md:self-center">
                             <button 
                                 onClick={handleSendKey}
-                                className="px-4 py-1 bg-green-600/10 hover:bg-green-600/20 text-green-500 text-[10px] font-black rounded border border-green-500/20 transition-all uppercase tracking-tighter"
+                                className="px-3 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 text-xs font-bold rounded-lg border border-emerald-500/30 transition-all uppercase tracking-wider active:scale-95"
                             >
                                 Send
                             </button>
                             <button 
                                 onClick={handleCopyKey}
-                                className="px-4 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[10px] font-bold rounded border border-zinc-700 transition-all uppercase tracking-tighter"
+                                className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold rounded-lg border border-zinc-700 transition-all uppercase tracking-wider active:scale-95"
                             >
                                 Copy
                             </button>
                             <button 
                                 onClick={handleClearKey}
-                                className="px-4 py-1 bg-red-600/10 hover:bg-red-600/20 text-red-500 text-[10px] font-bold rounded border border-red-500/20 transition-all uppercase tracking-tighter"
+                                className="px-3 py-1 bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 text-xs font-bold rounded-lg border border-rose-500/20 transition-all uppercase tracking-wider active:scale-95"
                             >
                                 Clear
                             </button>
+                            
+                            <button
+                                onClick={() => setIsAiLogModalOpen(true)}
+                                className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-bold rounded-lg border border-indigo-500/30 transition-all flex items-center gap-1.5 active:scale-95"
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
+                                AI Log
+                            </button>
                         </div>
                     </div>
+
                     <textarea 
                         value={notepadKey}
                         onChange={(e) => setNotepadKey(e.target.value)}
-                        className="w-full h-12 bg-black border border-zinc-800 rounded p-2 text-green-400 font-mono text-xs resize-none focus:outline-none focus:border-green-500/30 whitespace-pre overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-800"
-                        placeholder="Enter Gemini API key..."
+                        className="w-full h-11 bg-black/90 border border-zinc-800 rounded-lg p-2 text-emerald-400 font-mono text-xs resize-none focus:outline-none focus:border-emerald-500/40 whitespace-pre overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-800"
+                        placeholder="Paste Gemini API key here..."
                     />
                 </div>
             </div>
 
+            {/* Notification Toasts */}
+            {successNotice && (
+                <div className="fixed top-24 z-50 bg-emerald-950/90 border border-emerald-700/60 text-emerald-200 px-4 py-2.5 rounded-2xl shadow-xl backdrop-blur-md text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    {successNotice}
+                </div>
+            )}
+
             <header className="w-full max-w-[500px] text-center my-8 px-4">
-                <h1 className="text-4xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+                <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-indigo-400 to-blue-500">
                     Video Frame Capture
                 </h1>
-                <p className="text-lg text-gray-400 mt-2">
-                    Capture, analyze, and edit video frames with AI.
+                <p className="text-sm text-gray-400 mt-2">
+                    Capture, analyze, and edit video frames with Dual-Layer Gemini Engine.
                 </p>
             </header>
 
-            <main className="bg-gray-800 rounded-xl shadow-2xl p-4 w-full max-w-[500px] box-content">
+            {/* Main Video Section */}
+            <main className="bg-gray-800 rounded-2xl shadow-2xl p-4 w-full max-w-[500px] box-content border border-zinc-700/50">
                 <div className="w-[500px] h-auto flex items-center justify-center">
                     {videoSrc ? (
                         <VideoPlayer 
@@ -713,7 +785,7 @@ const App: React.FC = () => {
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".mp4" className="hidden" />
             
             {error && (
-                 <div role="alert" className="mt-4 bg-red-900/50 border border-red-500 text-red-300 px-4 py-2 rounded-lg text-sm max-w-[500px] w-full text-center">
+                 <div role="alert" className="mt-4 bg-red-950/80 border border-red-500/50 text-red-300 px-4 py-3 rounded-2xl text-xs max-w-[500px] w-full text-center shadow-lg">
                     {error}
                 </div>
             )}
@@ -722,19 +794,20 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-center gap-4 mt-6">
                     <button
                         onClick={handleUploadAreaClick}
-                        className="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500"
+                        className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl transition duration-200 transform hover:scale-105 active:scale-95 shadow-lg shadow-cyan-600/20 text-sm"
                     >
                         Change Video
                     </button>
                     <button
                         onClick={handleCaptureFrame}
-                        className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500"
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl transition duration-200 transform hover:scale-105 active:scale-95 shadow-lg shadow-indigo-600/20 text-sm"
                     >
                         Capture Frame
                     </button>
                 </div>
             )}
             
+            {/* Captured and Processed Frames */}
             <div className="w-full flex flex-col items-center pb-8 px-4">
                  {frames.map(frame => (
                     <ImageFrame
@@ -752,6 +825,34 @@ const App: React.FC = () => {
                     />
                  ))}
             </div>
+
+            {/* FLOATING MENU (Requirement 6) */}
+            <FloatingMenu
+                selectedTextModel={selectedTextModel}
+                onSelectTextModel={setSelectedTextModel}
+                textModelOptions={textModelOptions}
+                onOpenLogs={() => setIsAiLogModalOpen(true)}
+                onOpenApiKey={() => setIsApiKeyModalOpen(true)}
+                onCaptureFrame={handleCaptureFrame}
+                isProcessing={isProcessing}
+                hasVideo={Boolean(videoSrc)}
+            />
+
+            {/* AI EXECUTION LOG MODAL (Requirement 7) */}
+            <AiLogModal
+                isOpen={isAiLogModalOpen}
+                onClose={() => setIsAiLogModalOpen(false)}
+            />
+
+            {/* SAFE API KEY MODAL (Requirement 7) */}
+            <ApiKeyModal
+                isOpen={isApiKeyModalOpen}
+                onClose={() => setIsApiKeyModalOpen(false)}
+                onSave={(newKey) => {
+                    setActiveApiKey(newKey);
+                    setNotepadKey(newKey || 'no API key');
+                }}
+            />
 
         </div>
     );
