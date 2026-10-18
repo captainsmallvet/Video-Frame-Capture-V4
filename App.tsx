@@ -897,62 +897,94 @@ const App: React.FC = () => {
         if (!videoRef.current) return;
         const video = videoRef.current;
         
-        // 1. If currently playing, pause immediately to freeze exact frame buffer
-        if (!video.paused) {
-            video.pause();
-            setIsPlaying(false);
-        }
+        try {
+            // 1. If currently playing, pause immediately to freeze exact frame buffer
+            if (!video.paused) {
+                video.pause();
+                setIsPlaying(false);
+            }
 
-        // 2. If video decoder is actively seeking, wait for the 'seeked' event
-        if (video.seeking) {
-            await new Promise<void>((resolve) => {
-                const onSeeked = () => {
-                    video.removeEventListener('seeked', onSeeked);
-                    resolve();
-                };
-                video.addEventListener('seeked', onSeeked, { once: true });
-            });
-        }
+            // 2. If video decoder is actively seeking or readyState < 2, wait for seeked/loadeddata
+            if (video.seeking || video.readyState < 2) {
+                await new Promise<void>((resolve) => {
+                    const onReady = () => {
+                        video.removeEventListener('seeked', onReady);
+                        video.removeEventListener('loadeddata', onReady);
+                        resolve();
+                    };
+                    video.addEventListener('seeked', onReady, { once: true });
+                    video.addEventListener('loadeddata', onReady, { once: true });
+                    // Safety timeout in case event is missed
+                    setTimeout(resolve, 300);
+                });
+            }
 
-        // 3. Ensure browser presentation pipeline has rendered the latest decoded frame
-        if ('requestVideoFrameCallback' in video) {
-            await new Promise<void>((resolve) => {
-                (video as any).requestVideoFrameCallback(() => resolve());
-            });
-        } else {
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        }
+            // 3. Ensure browser presentation pipeline has rendered the latest decoded frame
+            if ('requestVideoFrameCallback' in video) {
+                await new Promise<void>((resolve) => {
+                    let called = false;
+                    try {
+                        (video as any).requestVideoFrameCallback(() => {
+                            if (!called) { called = true; resolve(); }
+                        });
+                    } catch (e) {
+                        resolve();
+                    }
+                    // Fallback timeout
+                    setTimeout(() => { if (!called) { called = true; resolve(); } }, 100);
+                });
+            } else {
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            }
 
-        // 4. Always captures from native videoWidth and videoHeight at full resolution
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        
-        // Ensure highest image smoothing quality
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        const dataUrl = canvas.toDataURL('image/png');
-        const originalNameWithoutExt = videoFileName.split('.').slice(0, -1).join('.') || videoFileName || 'video';
-        const currentFrameNum = Math.floor(video.currentTime * fps);
-        
-        const newFrame: Frame = {
-            id: crypto.randomUUID ? crypto.randomUUID() : `frame-${Date.now()}`,
-            src: dataUrl,
-            title: `Captured Frame #${currentFrameNum} (${canvas.width}×${canvas.height})`,
-            prompt: '',
-            originalFileName: `${formatTimeForFilename(video.currentTime, fps)} - ${originalNameWithoutExt}.png`,
-            naturalWidth: canvas.width,
-            naturalHeight: canvas.height,
-            frameIndex: currentFrameNum
-        };
-        
-        setFrames(prev => [newFrame, ...prev]);
-        setSuccessNotice(`✓ Frame #${currentFrameNum} captured with 100% exact frame-accuracy (${canvas.width}×${canvas.height})!`);
-        setTimeout(() => setSuccessNotice(''), 3000);
+            // 4. Always captures from native videoWidth and videoHeight at full resolution
+            const width = video.videoWidth || video.clientWidth || 1280;
+            const height = video.videoHeight || video.clientHeight || 720;
+
+            if (width === 0 || height === 0) {
+                throw new Error("Video dimensions not ready yet. Please try again after seeking.");
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                throw new Error("Could not initialize 2D canvas context.");
+            }
+            
+            // Ensure highest image smoothing quality
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const dataUrl = canvas.toDataURL('image/png');
+            if (!dataUrl || dataUrl === 'data:,') {
+                throw new Error("Canvas generated empty data URL. Video source may be restricted.");
+            }
+
+            const originalNameWithoutExt = videoFileName.split('.').slice(0, -1).join('.') || videoFileName || 'video';
+            const currentFrameNum = Math.floor(video.currentTime * fps);
+            
+            const newFrame: Frame = {
+                id: crypto.randomUUID ? crypto.randomUUID() : `frame-${Date.now()}`,
+                src: dataUrl,
+                title: `Captured Frame #${currentFrameNum} (${canvas.width}×${canvas.height})`,
+                prompt: '',
+                originalFileName: `${formatTimeForFilename(video.currentTime, fps)} - ${originalNameWithoutExt}.png`,
+                naturalWidth: canvas.width,
+                naturalHeight: canvas.height,
+                frameIndex: currentFrameNum
+            };
+            
+            setFrames(prev => [newFrame, ...prev]);
+            setSuccessNotice(`✓ Frame #${currentFrameNum} captured successfully (${canvas.width}×${canvas.height})!`);
+            setTimeout(() => setSuccessNotice(''), 3000);
+        } catch (err: any) {
+            console.error("Frame capture error:", err);
+            setError(`Capture failed: ${err.message || 'Please try again after pausing or seeking.'}`);
+            setTimeout(() => setError(''), 4000);
+        }
     };
 
     // --- RESILIENT IMAGE PROCESSING WITH CASCADE FALLBACK ---
