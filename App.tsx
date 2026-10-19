@@ -661,11 +661,27 @@ const App: React.FC = () => {
     // Video Player State
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const videoSectionRef = useRef<HTMLElement | null>(null);
+    const framesSectionRef = useRef<HTMLDivElement | null>(null);
+
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
     const [currentTime, setCurrentTime] = useState<number>(0);
     const [duration, setDuration] = useState<number>(0);
     const [volume, setVolume] = useState<number>(1);
     const [isMuted, setIsMuted] = useState<boolean>(false);
+
+    // Scroll Jump Handlers
+    const handleScrollToVideo = useCallback(() => {
+        if (videoSectionRef.current) {
+            videoSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, []);
+
+    const handleScrollToImages = useCallback(() => {
+        if (framesSectionRef.current) {
+            framesSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, []);
 
     // --- REAL-TIME CENTRALIZED REGISTRY SUBSCRIPTION ---
     useEffect(() => {
@@ -980,6 +996,11 @@ const App: React.FC = () => {
             setFrames(prev => [newFrame, ...prev]);
             setSuccessNotice(`✓ Frame #${currentFrameNum} captured successfully (${canvas.width}×${canvas.height})!`);
             setTimeout(() => setSuccessNotice(''), 3000);
+
+            // Auto-jump to Captured Image Preview
+            setTimeout(() => {
+                framesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 150);
         } catch (err: any) {
             console.error("Frame capture error:", err);
             setError(`Capture failed: ${err.message || 'Please try again after pausing or seeking.'}`);
@@ -1229,7 +1250,10 @@ const App: React.FC = () => {
             </header>
 
             {/* Main Video Section with Dynamic Sizing Container */}
-            <main className={`bg-gray-800 rounded-2xl shadow-2xl p-4 w-full transition-all duration-300 box-content border border-zinc-700/50 ${
+            <main 
+                ref={videoSectionRef}
+                id="video-preview-section"
+                className={`bg-gray-800 rounded-2xl shadow-2xl p-4 w-full transition-all duration-300 box-content border border-zinc-700/50 ${
                 videoFitMode === 'fit-width' ? 'max-w-4xl' : 
                 videoFitMode === 'fit-height' ? 'max-w-3xl' : 
                 videoFitMode === 'custom-zoom' ? 'max-w-4xl' : 
@@ -1292,7 +1316,11 @@ const App: React.FC = () => {
             )}
             
             {/* Captured and Processed Frames */}
-            <div className="w-full flex flex-col items-center pb-8 px-4">
+            <div 
+                ref={framesSectionRef}
+                id="captured-frames-section"
+                className="w-full flex flex-col items-center pb-8 px-4"
+            >
                  {frames.map(frame => (
                     <ImageFrame
                         key={frame.id}
@@ -1318,6 +1346,9 @@ const App: React.FC = () => {
                 onOpenLogs={() => setIsAiLogModalOpen(true)}
                 onOpenApiKey={() => setIsApiKeyModalOpen(true)}
                 onCaptureFrame={handleCaptureFrame}
+                onScrollToVideo={handleScrollToVideo}
+                onScrollToImages={handleScrollToImages}
+                framesCount={frames.length}
                 isProcessing={isProcessing}
                 hasVideo={Boolean(videoSrc)}
             />
