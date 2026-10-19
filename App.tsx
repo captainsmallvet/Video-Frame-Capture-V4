@@ -630,11 +630,15 @@ const App: React.FC = () => {
     const [textModelOptions, setTextModelOptions] = useState<AIModelOption[]>(FALLBACK_TEXT_REASONING_MODELS);
     const [imageModelOptions, setImageModelOptions] = useState<AIModelOption[]>(FALLBACK_IMAGE_MODELS);
 
-    const initialTextModel = getDefaultModelId(FALLBACK_TEXT_REASONING_MODELS, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.6-flash');
+    const initialTextModel = getDefaultModelId(FALLBACK_TEXT_REASONING_MODELS, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.8-flash');
     const initialImageModel = getDefaultModelId(FALLBACK_IMAGE_MODELS, APP_IMPORTANCE_LEVEL as 1, 'gemini-3-pro-image');
 
     const [selectedTextModel, setSelectedTextModel] = useState<string>(initialTextModel);
     const [defaultImageModel, setDefaultImageModel] = useState<string>(initialImageModel);
+
+    // Track whether the user has explicitly manually selected a model during this session
+    const userSelectedTextModelRef = useRef<boolean>(false);
+    const userSelectedImageModelRef = useRef<boolean>(false);
 
     // --- API KEY NOTEPAD STATES ---
     const [notepadKey, setNotepadKey] = useState<string>('');
@@ -690,12 +694,18 @@ const App: React.FC = () => {
                 const textModels = filterModelsByCategory(models, 'text_reasoning');
                 if (textModels.length > 0) {
                     setTextModelOptions(textModels);
-                    setSelectedTextModel(prev => prev || getDefaultModelId(textModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.6-flash'));
+                    if (!userSelectedTextModelRef.current) {
+                        const centralDefault = getDefaultModelId(textModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.8-flash');
+                        setSelectedTextModel(centralDefault);
+                    }
                 }
                 const imgModels = filterModelsByCategory(models, 'image_gen');
                 if (imgModels.length > 0) {
                     setImageModelOptions(imgModels);
-                    setDefaultImageModel(prev => prev || getDefaultModelId(imgModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3-pro-image'));
+                    if (!userSelectedImageModelRef.current) {
+                        const centralImgDefault = getDefaultModelId(imgModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3-pro-image');
+                        setDefaultImageModel(centralImgDefault);
+                    }
                 }
             }
         });
@@ -705,11 +715,19 @@ const App: React.FC = () => {
                 const textModels = filterModelsByCategory(updatedModels, 'text_reasoning');
                 if (textModels.length > 0) {
                     setTextModelOptions(textModels);
+                    if (!userSelectedTextModelRef.current) {
+                        const centralDefault = getDefaultModelId(textModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3.8-flash');
+                        setSelectedTextModel(centralDefault);
+                    }
                 }
 
                 const imgModels = filterModelsByCategory(updatedModels, 'image_gen');
                 if (imgModels.length > 0) {
                     setImageModelOptions(imgModels);
+                    if (!userSelectedImageModelRef.current) {
+                        const centralImgDefault = getDefaultModelId(imgModels, APP_IMPORTANCE_LEVEL as 1, 'gemini-3-pro-image');
+                        setDefaultImageModel(centralImgDefault);
+                    }
                 }
             }
         });
@@ -1200,7 +1218,10 @@ const App: React.FC = () => {
                                 </label>
                                 <select 
                                     value={selectedTextModel}
-                                    onChange={(e) => setSelectedTextModel(e.target.value)}
+                                    onChange={(e) => {
+                                        userSelectedTextModelRef.current = true;
+                                        setSelectedTextModel(e.target.value);
+                                    }}
                                     className="bg-black border border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-zinc-300 focus:ring-1 focus:ring-indigo-500 focus:outline-none font-medium max-w-[200px] sm:max-w-none truncate"
                                     title="Primary text reasoning model (Auto cascades if unavailable)"
                                 >
@@ -1366,7 +1387,10 @@ const App: React.FC = () => {
             {/* FLOATING MENU */}
             <FloatingMenu
                 selectedTextModel={selectedTextModel}
-                onSelectTextModel={setSelectedTextModel}
+                onSelectTextModel={(modelId) => {
+                    userSelectedTextModelRef.current = true;
+                    setSelectedTextModel(modelId);
+                }}
                 textModelOptions={textModelOptions}
                 onOpenLogs={() => setIsAiLogModalOpen(true)}
                 onOpenApiKey={() => setIsApiKeyModalOpen(true)}

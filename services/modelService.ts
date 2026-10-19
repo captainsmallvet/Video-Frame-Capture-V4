@@ -28,19 +28,20 @@ export interface AIModelOption {
 
 // Fallback models when Firestore is loading or offline
 export const FALLBACK_TEXT_REASONING_MODELS: AIModelOption[] = [
-  { id: 'fallback-text-1', modelId: 'gemini-3.6-flash', name: '(20)Gemini 3.6 Flash', category: 'text_reasoning', isActive: true, order: 1, isDefaultLevel1: true },
-  { id: 'fallback-text-2', modelId: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash (High Speed)', category: 'text_reasoning', isActive: true, order: 2 },
-  { id: 'fallback-text-3', modelId: 'gemini-3.5-flash', name: '(20)Gemini 3.5 Flash', category: 'text_reasoning', isActive: true, order: 3 },
-  { id: 'fallback-text-4', modelId: 'gemini-3-flash-preview', name: '(20)Gemini 3 Flash Preview', category: 'text_reasoning', isActive: true, order: 4 },
-  { id: 'fallback-text-5', modelId: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', category: 'text_reasoning', isActive: true, order: 5 },
-  { id: 'fallback-text-6', modelId: 'gemini-3.1-flash-lite', name: '(500)Gemini 3.1 Flash Lite', category: 'text_reasoning', isActive: true, order: 6 },
-  { id: 'fallback-text-7', modelId: 'gemini-3.1-pro-preview', name: '(0)Gemini 3.1 Pro Preview', category: 'text_reasoning', isActive: true, order: 7 },
-  { id: 'fallback-text-8', modelId: 'gemini-flash-latest', name: 'Gemini Flash Latest', category: 'text_reasoning', isActive: true, order: 8 },
-  { id: 'fallback-text-9', modelId: 'gemini-flash-lite-latest', name: 'Gemini Flash Lite Latest', category: 'text_reasoning', isActive: true, order: 9 },
-  { id: 'fallback-text-10', modelId: 'gemini-2.5-flash', name: '(20)Gemini 2.5 Flash', category: 'text_reasoning', isActive: true, order: 10 },
-  { id: 'fallback-text-11', modelId: 'gemini-2.5-flash-lite', name: '(20)Gemini 2.5 Flash Lite', category: 'text_reasoning', isActive: true, order: 11 },
-  { id: 'fallback-text-12', modelId: 'gemini-2.5-pro', name: '(0)Gemini 2.5 Pro', category: 'text_reasoning', isActive: true, order: 12 },
-  { id: 'fallback-text-13', modelId: 'gemini-pro-latest', name: 'Gemini Pro (Latest Stable)', category: 'text_reasoning', isActive: true, order: 13 },
+  { id: 'fallback-text-1', modelId: 'gemini-3.8-flash', name: '(20)Gemini 3.8 Flash', category: 'text_reasoning', isActive: true, order: 1, isDefaultLevel1: true },
+  { id: 'fallback-text-2', modelId: 'gemini-3.7-flash', name: '(20)Gemini 3.7 Flash', category: 'text_reasoning', isActive: true, order: 2 },
+  { id: 'fallback-text-3', modelId: 'gemini-3.6-flash', name: '(20)Gemini 3.6 Flash', category: 'text_reasoning', isActive: true, order: 3 },
+  { id: 'fallback-text-4', modelId: 'gemini-3.5-flash', name: '(20)Gemini 3.5 Flash', category: 'text_reasoning', isActive: true, order: 4 },
+  { id: 'fallback-text-5', modelId: 'gemini-3-flash-preview', name: '(20)Gemini 3 Flash Preview', category: 'text_reasoning', isActive: true, order: 5 },
+  { id: 'fallback-text-6', modelId: 'gemini-3.5-flash-lite', name: '(500)Gemini 3.5 Flash Lite', category: 'text_reasoning', isActive: true, order: 6, isDefaultLevel2: true },
+  { id: 'fallback-text-7', modelId: 'gemini-3.1-flash-lite', name: '(500)Gemini 3.1 Flash Lite', category: 'text_reasoning', isActive: true, order: 7 },
+  { id: 'fallback-text-8', modelId: 'gemini-3.1-pro-preview', name: '(0)Gemini 3.1 Pro Preview', category: 'text_reasoning', isActive: true, order: 8 },
+  { id: 'fallback-text-9', modelId: 'gemini-flash-latest', name: 'Gemini Flash Latest', category: 'text_reasoning', isActive: true, order: 9 },
+  { id: 'fallback-text-10', modelId: 'gemini-flash-lite-latest', name: 'Gemini Flash Lite Latest', category: 'text_reasoning', isActive: true, order: 10 },
+  { id: 'fallback-text-11', modelId: 'gemini-2.5-flash', name: '(20)Gemini 2.5 Flash', category: 'text_reasoning', isActive: true, order: 11 },
+  { id: 'fallback-text-12', modelId: 'gemini-2.5-flash-lite', name: '(20)Gemini 2.5 Flash Lite', category: 'text_reasoning', isActive: true, order: 12 },
+  { id: 'fallback-text-13', modelId: 'gemini-2.5-pro', name: '(0)Gemini 2.5 Pro', category: 'text_reasoning', isActive: true, order: 13 },
+  { id: 'fallback-text-14', modelId: 'gemini-pro-latest', name: 'Gemini Pro (Latest Stable)', category: 'text_reasoning', isActive: true, order: 14 },
 ];
 
 export const FALLBACK_IMAGE_MODELS: AIModelOption[] = [
@@ -68,7 +69,7 @@ function getDb() {
  */
 export function resolveModelName(requestedModel: string): string {
   if (!requestedModel || typeof requestedModel !== 'string') {
-    return 'gemini-3.6-flash';
+    return 'gemini-3.8-flash';
   }
 
   const trimmed = requestedModel.trim();
