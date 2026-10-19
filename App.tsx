@@ -790,11 +790,32 @@ const App: React.FC = () => {
         }
     }, [videoSrc, isMuted, volume]);
     
-    // --- VIDEO PLAYER HANDLERS ---
+    // --- FRAME SNAPPING & VIDEO PLAYER HANDLERS ---
+    // Snap to the exact center of the nearest frame for the crispest possible frame display
+    const snapToNearestFrame = useCallback(() => {
+        if (!videoRef.current) return;
+        const video = videoRef.current;
+        const frameDuration = 1 / fps;
+        const totalFrames = Math.max(1, Math.floor((duration || video.duration || 0) * fps));
+        const nearestFrameIndex = Math.max(0, Math.min(totalFrames - 1, Math.round(video.currentTime * fps)));
+        const exactCenterTime = Math.max(0, Math.min(duration || video.duration || 0, (nearestFrameIndex * frameDuration) + (frameDuration * 0.5)));
+        
+        if (Math.abs(video.currentTime - exactCenterTime) > 0.001) {
+            video.currentTime = exactCenterTime;
+            setCurrentTime(exactCenterTime);
+        }
+    }, [fps, duration]);
+
     const togglePlayPause = useCallback(() => {
         if (!videoRef.current) return;
-        videoRef.current.paused ? videoRef.current.play() : videoRef.current.pause();
-    }, []);
+        const video = videoRef.current;
+        if (video.paused) {
+            video.play();
+        } else {
+            video.pause();
+            snapToNearestFrame();
+        }
+    }, [snapToNearestFrame]);
 
     // High-Precision Seek Handler
     const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -920,8 +941,24 @@ const App: React.FC = () => {
                 setIsPlaying(false);
             }
 
-            // 2. If video decoder is actively seeking or readyState < 2, wait for seeked/loadeddata
-            if (video.seeking || video.readyState < 2) {
+            // 2. Ensure exact frame center alignment for maximum clarity
+            const frameDuration = 1 / fps;
+            const totalFrames = Math.max(1, Math.floor((duration || video.duration || 0) * fps));
+            const currentFrameNum = Math.max(0, Math.min(totalFrames - 1, Math.round(video.currentTime * fps)));
+            const exactCenterTime = Math.max(0, Math.min(duration || video.duration || 0, (currentFrameNum * frameDuration) + (frameDuration * 0.5)));
+
+            if (Math.abs(video.currentTime - exactCenterTime) > 0.002) {
+                video.currentTime = exactCenterTime;
+                setCurrentTime(exactCenterTime);
+                await new Promise<void>((resolve) => {
+                    const onSeeked = () => {
+                        video.removeEventListener('seeked', onSeeked);
+                        resolve();
+                    };
+                    video.addEventListener('seeked', onSeeked, { once: true });
+                    setTimeout(resolve, 150);
+                });
+            } else if (video.seeking || video.readyState < 2) {
                 await new Promise<void>((resolve) => {
                     const onReady = () => {
                         video.removeEventListener('seeked', onReady);
@@ -930,28 +967,12 @@ const App: React.FC = () => {
                     };
                     video.addEventListener('seeked', onReady, { once: true });
                     video.addEventListener('loadeddata', onReady, { once: true });
-                    // Safety timeout in case event is missed
-                    setTimeout(resolve, 300);
+                    setTimeout(resolve, 150);
                 });
             }
 
-            // 3. Ensure browser presentation pipeline has rendered the latest decoded frame
-            if ('requestVideoFrameCallback' in video) {
-                await new Promise<void>((resolve) => {
-                    let called = false;
-                    try {
-                        (video as any).requestVideoFrameCallback(() => {
-                            if (!called) { called = true; resolve(); }
-                        });
-                    } catch (e) {
-                        resolve();
-                    }
-                    // Fallback timeout
-                    setTimeout(() => { if (!called) { called = true; resolve(); } }, 100);
-                });
-            } else {
-                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            }
+            // 3. One animation frame tick to allow rendering pipeline to flush
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
             // 4. Always captures from native videoWidth and videoHeight at full resolution
             const width = video.videoWidth || video.clientWidth || 1280;
@@ -980,7 +1001,7 @@ const App: React.FC = () => {
             }
 
             const originalNameWithoutExt = videoFileName.split('.').slice(0, -1).join('.') || videoFileName || 'video';
-            const currentFrameNum = Math.floor(video.currentTime * fps);
+            const capturedFrameIndex = currentFrameNum;
             
             const newFrame: Frame = {
                 id: crypto.randomUUID ? crypto.randomUUID() : `frame-${Date.now()}`,
@@ -1265,7 +1286,11 @@ const App: React.FC = () => {
                             src={videoSrc} videoRef={videoRef} isPlaying={isPlaying} currentTime={currentTime}
                             duration={duration} volume={volume} isMuted={isMuted} togglePlayPause={togglePlayPause}
                             handleSeek={handleSeek} handleVolumeChange={handleVolumeChange} toggleMute={toggleMute}
-                            onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)}
+                            onPlay={() => setIsPlaying(true)} 
+                            onPause={() => {
+                                setIsPlaying(false);
+                                snapToNearestFrame();
+                            }}
                             onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata}
                             onEnded={() => setIsPlaying(false)} onSkipToEnd={handleSkipToEnd}
                             fitMode={videoFitMode}
